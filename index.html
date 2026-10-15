@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b6e69">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Levé">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Validation de levé ArpentNord</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: poste de travail plein écran — plan CAO à gauche, carnet de contrôle à droite (empilés sur téléphone). */
+:root{
+  --bg:#eef1f2; --panel:#ffffff; --ink:#18222a; --muted:#5b6a74; --line:#d5dcdf; --soft:#f5f7f8;
+  --accent:#0b6e69; --accent-ink:#ffffff; --accent-soft:#d8eeec;
+  --err:#c62f2a; --err-soft:#fbe4e2; --warn:#a96400; --warn-soft:#fbefd9; --info:#2d5f9a; --info-soft:#e1ebf7; --ok:#2e7d4f;
+  --plan:#14191d; --plan-grid:#1f272d; --plan-ink:#c9d3d8;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1417; --panel:#161d21; --ink:#e3e9ec; --muted:#93a3ad; --line:#2a353b; --soft:#1c252a;
+  --accent:#3cc4b8; --accent-ink:#06211f; --accent-soft:#143633;
+  --err:#ff6b63; --err-soft:#3a1a19; --warn:#f0a83a; --warn-soft:#352612; --info:#79a9e6; --info-soft:#17263a; --ok:#5cc98a;
+  --plan:#0b0f12; --plan-grid:#161d22; --plan-ink:#c9d3d8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1417; --panel:#161d21; --ink:#e3e9ec; --muted:#93a3ad; --line:#2a353b; --soft:#1c252a;
+  --accent:#3cc4b8; --accent-ink:#06211f; --accent-soft:#143633;
+  --err:#ff6b63; --err-soft:#3a1a19; --warn:#f0a83a; --warn-soft:#352612; --info:#79a9e6; --info-soft:#17263a; --ok:#5cc98a;
+  --plan:#0b0f12; --plan-grid:#161d22; --plan-ink:#c9d3d8; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);}
+*{box-sizing:border-box}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{height:100%;display:grid;grid-template-rows:auto 1fr;min-height:0}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font:700 1.25rem/1 var(--f-display);letter-spacing:.01em;margin:0;text-wrap:balance}
+.brand small{font:500 .78rem var(--f-mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.bar .grow{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);padding:7px 12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.88rem;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:4px 9px;font-size:.8rem}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 400px;min-height:0}
+.planwrap{position:relative;background:var(--plan);min-height:0;overflow:hidden;touch-action:none}
+canvas#plan{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.hud{position:absolute;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.hud>*{pointer-events:auto}
+.hud.tl{top:10px;left:10px}
+.hud.tr{top:10px;right:10px;justify-content:flex-end}
+.hud.bl{bottom:10px;left:10px;font:12px var(--f-mono);color:var(--plan-ink)}
+.chipbtn{background:rgba(20,26,30,.82);color:#dfe7ea;border:1px solid #33414a;border-radius:5px;padding:4px 9px;font:600 12px var(--f-display);letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
+.chipbtn[aria-pressed="true"]{background:#0b6e69;border-color:#3cc4b8;color:#fff}
+.readout{background:rgba(20,26,30,.82);border:1px solid #33414a;border-radius:5px;padding:4px 8px;font-variant-numeric:tabular-nums}
+.drop{position:absolute;inset:12px;border:2px dashed #3cc4b8;border-radius:10px;display:grid;place-items:center;color:#e8f6f4;font:600 1.1rem var(--f-display);background:rgba(11,110,105,.25)}
+.side{display:grid;grid-template-rows:auto auto 1fr;min-height:0;background:var(--panel);border-left:1px solid var(--line)}
+.summary{display:flex;gap:6px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.stat{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:6px;background:var(--soft);flex:1 1 0;min-width:58px}
+.stat b{font:700 1.2rem/1 var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stat.err b{color:var(--err)} .stat.warn b{color:var(--warn)} .stat.mod b{color:var(--accent)}
+.tabs{display:flex;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{flex:1;border:0;background:none;padding:10px 6px;font:600 .82rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.panes{min-height:0;overflow:auto}
+.pane{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.insp{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--soft)}
+.insp h2{margin:0;font:700 1.05rem var(--f-display);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.coords{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;font-size:.8rem}
+.coords div{display:flex;flex-direction:column}
+.coords span{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.field input,.field select{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+.field input.mono{font-family:var(--f-mono)}
+.row3{display:grid;grid-template-columns:1.1fr .7fr 1.4fr;gap:8px}
+.codeinfo{font-size:.85rem;color:var(--muted)}
+.codeinfo b{color:var(--ink)}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:baseline;margin-right:5px;border:1px solid rgba(0,0,0,.25)}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.issue{border:1px solid var(--line);border-left-width:4px;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:var(--panel);cursor:pointer}
+.issue.err{border-left-color:var(--err)} .issue.warn{border-left-color:var(--warn)} .issue.info{border-left-color:var(--info)}
+.issue.cur{outline:2px solid var(--accent);outline-offset:-1px}
+.issue .hd{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
+.issue .pt{font:600 .8rem var(--f-mono)}
+.issue .msg{font-size:.9rem}
+.pill{font:700 .66rem var(--f-display);letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:4px;white-space:nowrap}
+.pill.err{background:var(--err-soft);color:var(--err)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.info{background:var(--info-soft);color:var(--info)} .pill.ok{background:var(--accent-soft);color:var(--accent)}
+.fix{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:5px;padding:3px 8px;font-size:.8rem;font-weight:600;cursor:pointer}
+.fix:hover{background:var(--accent);color:var(--accent-ink)}
+.empty{color:var(--muted);font-size:.9rem;padding:8px 2px}
+.filter{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.filter input[type=search]{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 9px}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+th,td{padding:5px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font:600 .7rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--soft);position:sticky;top:0}
+td.mono{font-size:.78rem}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--soft)}
+tr.sel td{background:var(--accent-soft)}
+del{color:var(--muted)}
+.modtag{color:var(--accent);font-weight:600}
+td input.lay{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:3px 6px;font:12px var(--f-mono);width:210px}
+.src{font:600 .65rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.opt{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;font-size:.9rem}
+.opt input[type=number]{width:90px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:5px 7px}
+.opt select{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:5px 7px}
+.note{font-size:.82rem;color:var(--muted);line-height:1.5}
+.note code{font-family:var(--f-mono);font-size:.78rem}
+h3{margin:6px 0 0;font:700 .8rem var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:.82rem}
+.legend code{font:600 .78rem var(--f-mono);color:var(--accent)}
+.swapbox{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--line);padding-top:10px}
+.swaprow{display:flex;gap:6px;flex-wrap:wrap}.swaprow input{flex:1 1 120px;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 9px}
+#iSwapPick[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.rect4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.rect4 input{min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 7px;font-size:.8rem}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
+label.btn{user-select:none}
+/* Le vrai champ fichier couvre le bouton : le toucher l'active directement (fiable sur iPhone / Safari) */
+.filebtn{position:relative;overflow:hidden}
+.filebtn input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:40px}
+.filebtn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.sheet{position:fixed;inset:0;background:rgba(10,14,17,.55);display:grid;place-items:center;z-index:8;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.sheetbox{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(560px,100%);display:flex;flex-direction:column;gap:10px;max-height:100%;overflow:auto}
+.sheetbox h2{margin:0;font:700 1.15rem var(--f-display)}
+.sheetbox textarea{width:100%;border:1px solid var(--line);background:var(--soft);border-radius:6px;padding:8px;font:12px/1.4 var(--f-mono);resize:vertical}
+.files{border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;margin:0}
+.files legend{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:0 4px}
+.files label{display:flex;gap:8px;align-items:baseline;font-size:.88rem;flex-wrap:wrap}
+.sheetbox textarea#mBody{font:14px/1.4 var(--f-body);background:var(--panel)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:7px;font-size:.88rem;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100% - 32px);z-index:9}
+.confirm{display:flex;flex-direction:column;gap:8px;border:1px solid var(--warn);background:var(--warn-soft);padding:10px;border-radius:6px;font-size:.88rem}
+@media (max-width:900px){
+  html,body{height:auto}
+  .app{height:auto;display:block}
+  .main{grid-template-columns:1fr}
+  .planwrap{height:58vh;min-height:320px}
+  .side{border-left:0;border-top:1px solid var(--line)}
+  .panes{overflow:visible}
+  .brand small{max-width:60vw}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><h1>Validation de levé</h1><small id="fname">aucun fichier</small></div>
+    <div class="grow"></div>
+    <label class="btn filebtn" id="bOpen">Ouvrir un levé…<input type="file" id="fileIn" aria-label="Ouvrir un fichier de levé"></label>
+    <button class="btn" id="bPaste" type="button">Coller</button>
+    <button class="btn" id="bUndo" type="button" title="Annuler (Ctrl+Z)" disabled>Annuler</button>
+    <button class="btn" id="bTxt" type="button" disabled>Exporter _modif.txt</button>
+    <button class="btn primary" id="bDxf" type="button" disabled>Exporter DXF</button>
+    <button class="btn primary" id="bMail" type="button" disabled>Envoyer par Outlook…</button>
+  </header>
+  <div class="main">
+    <section class="planwrap" id="planwrap" aria-label="Plan du levé">
+      <canvas id="plan"></canvas>
+      <div class="hud tl">
+        <button class="chipbtn" id="tNum" aria-pressed="true" type="button">Numéros</button>
+        <button class="chipbtn" id="tCode" aria-pressed="false" type="button">Codes</button>
+        <button class="chipbtn" id="tElev" aria-pressed="false" type="button">Élév.</button>
+      </div>
+      <div class="hud tr">
+        <button class="chipbtn" id="tFit" type="button">Étendue</button>
+      </div>
+      <div class="hud bl"><span class="readout" id="readout">E — · N —</span></div>
+      <div class="drop" id="drop" hidden>Déposer le fichier de levé (.txt)</div>
+    </section>
+    <aside class="side">
+      <div class="summary" id="summary"></div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="pAnom" aria-selected="true" type="button">Anomalies</button>
+        <button class="tab" role="tab" data-tab="pPts" aria-selected="false" type="button">Points</button>
+        <button class="tab" role="tab" data-tab="pCodes" aria-selected="false" type="button">Codes</button>
+        <button class="tab" role="tab" data-tab="pOpt" aria-selected="false" type="button">Options</button>
+      </div>
+      <div class="panes">
+        <div class="pane" id="pAnom">
+          <div id="insp"></div>
+          <div class="filter">
+            <button class="btn sm" id="bPrev" type="button">◀ Précédente</button>
+            <button class="btn sm" id="bNext" type="button">Suivante ▶</button>
+            <label class="note"><input type="checkbox" id="fInfo" checked> afficher les notes</label>
+          </div>
+          <div id="issues"></div>
+        </div>
+        <div class="pane" id="pPts" hidden>
+          <div class="filter">
+            <input type="search" id="ptSearch" placeholder="Matricule ou description…" aria-label="Filtrer les points">
+            <label class="note"><input type="checkbox" id="ptMod"> modifiés</label>
+          </div>
+          <div class="tblwrap"><table><thead><tr><th>Matricule</th><th>Description</th><th>Z</th></tr></thead><tbody id="ptBody"></tbody></table></div>
+        </div>
+        <div class="pane" id="pCodes" hidden>
+          <p class="note">Codes présents dans le levé et couche du gabarit NouvLR utilisée pour le DXF. Source&nbsp;: <b>gabarit</b> = clé de description du DWT, <b>déduit</b> = associé par catégorie (à valider). Une couche modifiée ici est retenue dans ce navigateur.</p>
+          <div class="tblwrap"><table><thead><tr><th>Code</th><th>Description</th><th>Couche</th><th>Pts</th></tr></thead><tbody id="codeBody"></tbody></table></div>
+          <datalist id="layerList"></datalist>
+          <datalist id="codeList"></datalist>
+          <datalist id="nameList"></datalist>
+        </div>
+        <div class="pane" id="pOpt" hidden>
+          <h3>Contrôles</h3>
+          <div class="opt">
+            <label for="oMaxSeg">Segment suspect au-delà de (m)</label><input type="number" id="oMaxSeg" min="1" step="1" value="40">
+            <label for="oDup">Points doublés sous (m)</label><input type="number" id="oDup" min="0" step="0.001" value="0.005">
+          </div>
+          <h3>DXF</h3>
+          <div class="opt">
+            <label for="oPrefix">Préfixe des couches</label>
+            <select id="oPrefix"><option value="C">C- (levé)</option><option value="E">E- (existant)</option></select>
+            <label for="oTxtH">Hauteur de texte (m)</label><input type="number" id="oTxtH" min="0.01" step="0.05" value="0.20">
+            <label for="o3d">Lignes et points en 3D (élévation)</label><input type="checkbox" id="o3d" checked>
+            <label for="oDxNum">Numéros de points</label><input type="checkbox" id="oDxNum" checked>
+            <label for="oDxElev">Élévations</label><input type="checkbox" id="oDxElev" checked>
+            <label for="oDxCode">Descriptions</label><input type="checkbox" id="oDxCode" checked>
+            <label for="oStep">Pas de densification des courbes (m)</label><input type="number" id="oStep" min="0.05" step="0.05" value="0.25">
+          </div>
+          <p class="note">Le DXF (AutoCAD R12, ANSI 1252) est livré dans un .zip. Pour hériter des propriétés du gabarit, créez un dessin à partir de <code>Template-NouvLR.dwt</code> puis insérez le DXF (INSERER, cocher Décomposer)&nbsp;: les couches C-… existantes gardent leurs couleurs et types de ligne.</p>
+          <h3>Codes de contrôle (string Leica CS20)</h3>
+          <div class="legend">
+            <code>.1</code><span>Début de ligne</span>
+            <code>.2</code><span>Fermer la forme (retour au premier point)</span>
+            <code>.3</code><span>Début de courbe / spline (arc 3 pts)</span>
+            <code>.4</code><span>Fin de courbe</span>
+            <code>.5</code><span>Point dans la courbe</span>
+            <code>.6</code><span>Cercle par 2 ou 3 points</span>
+            <code>.7</code><span>Continuer la ligne (même effet qu'aucun code)</span>
+          </div>
+          <p class="note">Format lu&nbsp;: <code>Matricule,Est,Nord,Élév,Description</code> où la description est <code>Pcode String.Contrôle [attributs]</code>, ex. <code>526 1.1</code>. Le fichier _modif ne change que les descriptions corrigées et, pour deux points inversés, leurs coordonnées (chaque matricule prend la position de l'autre). Un point calculé (rectangle) reçoit le code et le string de sa ligne avec .2 et l'attribut CALCUL (ex. <code>526 8.2 CALCUL</code>), et il est inséré juste après le dernier point de sa ligne.</p>
+          <p class="note">Version 2026-10-15 · fonctionne hors ligne une fois ouverte · les fichiers restent sur l'appareil.</p>
+          <div class="actions"><button class="btn sm" id="bJournal" type="button" disabled>Exporter le journal des corrections (.csv)</button><button class="btn sm" id="bResetLay" type="button">Rétablir les couches du gabarit</button></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="sheet" id="pasteSheet" hidden>
+  <div class="sheetbox" role="dialog" aria-labelledby="pasteTitle">
+    <h2 id="pasteTitle">Coller le contenu d'un levé</h2>
+    <p class="note">Si le fichier n'est pas accessible depuis le sélecteur (pièce jointe Outlook, par exemple), ouvrez-le, copiez tout le texte, puis collez-le ici.</p>
+    <div class="field"><label for="pasteName">Nom du fichier (pour le _modif)</label><input id="pasteName" class="mono" value="leve_colle.txt"></div>
+    <div class="field"><label for="pasteText">Contenu</label><textarea id="pasteText" class="mono" rows="9" placeholder="628763001,284059.099,5038954.062,31.969,9&#10;628763002,284063.042,5038961.625,34.221,526 1.1"></textarea></div>
+    <div class="actions"><button class="btn primary" id="pasteGo" type="button">Analyser</button><button class="btn" id="pasteCancel" type="button">Fermer</button></div>
+  </div>
+</div>
+<div class="sheet" id="pickHelp" hidden>
+  <div class="sheetbox" role="dialog" aria-labelledby="pickHelpTitle">
+    <h2 id="pickHelpTitle">Aucun fichier n'a été reçu</h2>
+    <p class="note">Le sélecteur s'est fermé sans transmettre de fichier. Réessayez avec «&nbsp;Ouvrir un levé…&nbsp;», en choisissant «&nbsp;Parcourir&nbsp;» puis le fichier .txt, ou&nbsp;:</p>
+    <p class="note"><b>1. Coller le contenu</b> : ouvrez le .txt dans Fichiers, touchez-le longuement, choisissez «&nbsp;Tout sélectionner&nbsp;» puis «&nbsp;Copier&nbsp;», et collez ici.</p>
+    <div class="actions"><button class="btn primary" id="pickHelpPaste" type="button">Coller le contenu</button><button class="btn" id="pickHelpClose" type="button">Fermer</button></div>
+  </div>
+</div>
+<div class="sheet" id="mailSheet" hidden>
+  <div class="sheetbox" role="dialog" aria-labelledby="mailTitle">
+    <h2 id="mailTitle">Envoyer par Outlook</h2>
+    <fieldset class="files"><legend>Pièces jointes</legend>
+      <label><input type="checkbox" id="mTxt" checked> <span class="mono" id="mTxtName">_modif.txt</span></label>
+      <label><input type="checkbox" id="mDxf" checked> <span class="mono" id="mDxfName">.dxf</span></label>
+      <label><input type="checkbox" id="mCsv"> <span class="mono" id="mCsvName">_journal.csv</span> <span class="note">journal des corrections</span></label>
+    </fieldset>
+    <div class="field"><label for="mTo">Destinataire</label><input id="mTo" type="email" inputmode="email" autocomplete="email" placeholder="prenom.nom@arpentnord.com"></div>
+    <div class="field"><label for="mSubj">Objet</label><input id="mSubj"></div>
+    <div class="field"><label for="mBody">Message</label><textarea id="mBody" rows="6"></textarea></div>
+    <p class="note" id="mHow"></p>
+    <div class="actions"><button class="btn primary" id="mGo" type="button">Ouvrir Outlook</button><button class="btn" id="mClose" type="button">Fermer</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script>
+const DICT={"codes":[[88,"MAP","Mur d'aménagement paysager, écran acoustique, etc.","Bâtiment","C-BAT-MUR-AMENAGEMEN","d"],[110,"BAT","Bâtiment divers","Bâtiment","C-BAT-PRINCIPAL","d"],[111,"BBT","Bord de toiture (levé photo)","Bâtiment","C-BAT-TOITURE","d"],[112,"BIN","Bâtiment institutionnel","Bâtiment","C-BAT-PRINCIPAL","d"],[113,"BRE","Bâtiment religieux","Bâtiment","C-BAT-PRINCIPAL","d"],[116,"BAA","Bâtiment agricole","Bâtiment","C-BAT-PRINCIPAL","d"],[120,"BAC","Bâtiment commercial","Bâtiment","C-BAT-PRINCIPAL","d"],[121,"BAR","Bâtiment résidentiel","Bâtiment","C-BAT-PRINCIPAL","d"],[123,"ABR","Abribus","Bâtiment","C-BAT-ACCESSOIRE","d"],[124,"CAT","Cabine téléphonique","Bâtiment","C-BAT-ACCESSOIRE","d"],[126,"BAS","Bâtiment secondaire (autres)","Bâtiment","C-BAT-ANNEXE","d"],[127,"ABA","Abri d'auto","Bâtiment","C-BAT-ANNEXE","d"],[128,"BCO","Bâtiment en construction","Bâtiment","C-BAT-PRINCIPAL","d"],[129,"BAI","Bâtiment industriel","Bâtiment","C-BAT-PRINCIPAL","d"],[130,"BRU","Bâtiment en ruine","Bâtiment","C-BAT-RUINE","d"],[133,"ESC","Escalier","Bâtiment","C-BAT-ACCESSOIRE","d"],[134,"FON","Fondation de bâtiment","Bâtiment","C-BAT-FONDATION","d"],[135,"ELD","Élément décoratif (statue, fontaine, rocaille)","Bâtiment","C-BAT-ACCESSOIRE","d"],[137,"POU","Poteau utilitaire","Bâtiment","C-BAT-ACCESSOIRE","d"],[138,"PAT","Patio/terrasse","Bâtiment","C-BAT-ACCESSOIRE","d"],[140,"PCR","Piscine creusé","Bâtiment","C-BAT-ACCESSOIRE","g"],[141,"PHT","Piscine hors terre","Bâtiment","C-BAT-ACCESSOIRE","g"],[142,"IPE","Îlot pour pompe à essence","Bâtiment","C-BAT-ACCESSOIRE","g"],[144,"DAB","Dalle de béton","Bâtiment","C-BAT-ACCESSOIRE","g"],[145,"TOU","Tour, antenne, autres","Bâtiment","C-BAT-ACCESSOIRE","g"],[148,"PHA","Phare","Bâtiment","C-BAT-PRINCIPAL","g"],[151,"MOC","Monument commémoratif","Bâtiment","C-BAT-ACCESSOIRE","g"],[152,"BRS","Bouche de réservoir souterrain","Bâtiment","C-BAT-ACCESSOIRE","g"],[153,"REV","Limite de réservoir","Bâtiment","C-BAT-ACCESSOIRE","g"],[155,"CHE","Champ d'épuration","Bâtiment","C-BAT-CHAMP-EPURATIO","g"],[156,"GAL","Galerie","Bâtiment","C-BAT-ANNEXE","g"],[157,"FOE","Foyer extérieur","Bâtiment","C-BAT-ACCESSOIRE","g"],[160,"FOP","Fosse à purin","Bâtiment","C-BAT-ACCESSOIRE","g"],[235,"FOS","Fosse septique","Bâtiment","C-BAT-ACCESSOIRE","g"],[236,"PUI","Puits","Bâtiment","C-BAT-ACCESSOIRE","g"],[254,"BOP","Boite postale","Bâtiment","C-BAT-ACCESSOIRE","g"],[413,"EAB","Écran anti-bruit","Bâtiment","C-STR-MUR-ANTI_BRUIT","g"],[446,"MUA","Mur anti-bruit","Bâtiment","C-STR-MUR-ANTI_BRUIT","g"],[447,"MUF","Mur de front","Bâtiment","C-STR-PONT","g"],[490,"BAN","Banc (dans un parc)","Bâtiment","C-SER-ACCESSOIRE","g"],[515,"AIE","Aire d'entreposage","Bâtiment","C-VOI-AIRE-ENTREPOSAGE","g"],[517,"CIT","Citerne","Bâtiment","C-VOI-CITERNE","g"],[518,"CON","Conteneur","Bâtiment","C-VOI-CONTENEUR","g"],[519,"PLB","Plateforme bas","Bâtiment","C-VOI-PLATEFORME","g"],[521,"PLH","Plateforme haut","Bâtiment","C-VOI-PLATEFORME","g"],[522,"PGA","Porte de garage","Bâtiment","C-VOI-ACCES-BATIMENT","g"],[523,"PEN","Porte d'entrée","Bâtiment","C-VOI-ACCES-BATIMENT","g"],[525,"PBO","Poteau en bois","Bâtiment","C-VOI-PROTECTION","g"],[526,"ROU","Roulotte","Bâtiment","C-VOI-ROULOTTE","g"],[527,"ABI","Abri","Bâtiment","C-BAT-ANNEXE","g"],[528,"GAR","Garage","Bâtiment","C-BAT-ANNEXE","g"],[529,"REM","Remise","Bâtiment","C-BAT-ANNEXE","g"],[530,"DIB","Divers (bâtiment)","Bâtiment","C-BAT-DIVERS","g"],[640,"MEP","Membrane projetée","Bâtiment","C-BAT-MEMBRANE-PROJETÉE","g"],[641,"PLA","Plancher","Bâtiment","C-BAT-ACCESSOIRE","g"],[642,"PLO","Plafond","Bâtiment","C-BAT-ACCESSOIRE","g"],[531,"CEB","Chambre Électrique (Bâtiment)","Bâtiment","C-BAT-CHAMBRE-ELECTRIQUE","g"],[65,"FOF","Fond de fossé","Draînage","C-DRA-FOSSE-FOND","g"],[67,"DAL","Dalot de drainage","Draînage","C-DRA-DALOT","g"],[68,"CAN","Caniveau","Draînage","C-DRA-CANIVEAU","g"],[69,"FOC","Centre de fossé","Draînage","C-DRA-FOSSE-CENTRE","g"],[70,"FOB","Bord de fossé (limite d'excavation)","Draînage","C-DRA-FOSSE-BORD","g"],[74,"ENB","Eaux normales basses","Draînage","C-DRA-EAU-NORM-BASS","g"],[76,"EAJ","Eaux du jour","Draînage","C-DRA-EAU-JOUR","g"],[77,"CEC","Centre de cours d'eau","Draînage","C-DRA-EAU-CENTRE","g"],[78,"ENH","Eaux normales hautes","Draînage","C-DRA-EAU-NORM-HAUT","d"],[79,"EAE","Eaux extrêmes (ligne des hautes eaux)","Draînage","C-DRA-EAU-EXTREME","d"],[85,"MUR","Mur de tête de ponceau","Draînage","C-DRA-MUR","d"],[195,"TTP","Tuyau en thermoplastique","Draînage","C-DRA-PONCEAU","g"],[196,"TBA","Tuyau en béton armé","Draînage","C-DRA-PONCEAU","g"],[197,"TTO","Tuyau en tôle ondulée","Draînage","C-DRA-PONCEAU","g"],[199,"PBA","Ponceau rect en béton armé","Draînage","C-DRA-PONCEAU","g"],[204,"BUS","Buse (extrémité d'un tuyau levé à sa partie supérieure)","Draînage","C-DRA-BUSE","g"],[231,"PUC","Puisard circulaire","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","g"],[233,"RPU","Regard-puisard","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","g"],[234,"PRP","Puisard rectangulaire 350x600","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","g"],[241,"PRR","Puisard/Regard fond","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","g"],[257,"REP","Regard d'égout pluvial","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","d"],[266,"PRG","Puisard rectangulaire 450x900","Draînage","C-DRA-EGOUT-PLUVIAL-ELEMENT","d"],[286,"DRA","Drainage agricole","Draînage","C-DRA-AGRICOLE","d"],[290,"EPR","Empierrement anti-érosion","Draînage","C-DRA-PROTECTION","d"],[366,"PEP","Pièce d'extrémité de ponceau","Draînage","C-DRA-PONCEAU","d"],[403,"DRV","Drain vertical","Draînage","C-DRA-DRAIN","d"],[409,"PIZ","Piézomètre (pz)","Draînage","C-MOD-SONDAGE","d"],[411,"RAD","Radier","Draînage","C-DRA-PONCEAU","g"],[412,"DST","Drainage de structure","Draînage","C-DRA-EGOUT-PLUVIAL","g"],[4002,"DNP","Drain non-perforé","Draînage","C-DRA-DRAIN","d"],[415,"MEG","Membrane géotextile","Draînage","C-MOD-GEOTEXTILE","g"],[418,"BSE","Barrière sédimentation","Draînage","C-DRA-PROTECTION","g"],[421,"PAR","Parafouille","Draînage","C-DRA-PONCEAU","g"],[443,"TOB","Tube d'observation","Draînage","C-MOD-SONDAGE","g"],[469,"DGB","Digue bas","Draînage","C-DRA-DIGUE","g"],[470,"DGH","Digue haut","Draînage","C-DRA-DIGUE","g"],[471,"DRP","Drain perforé (+diamètre)","Draînage","C-DRA-DRAIN","g"],[472,"DRS","Drain, sortie (exutoire)","Draînage","C-DRA-DRAIN","g"],[473,"PPV","Ponceau P.V.C (+diamètre+rad ou top)","Draînage","C-DRA-PONCEAU","g"],[478,"TPL","Tuyau de plastique","Draînage","C-DRA-PONCEAU","g"],[480,"DID","Divers (drainage)","Draînage","C-DRA-DIVERS","g"],[481,"NIV","Niveau d'eau","Draînage","C-DRA-EAU-JOUR","g"],[482,"RIV","Rive - Rivage","Draînage","C-DRA-RIVE","g"],[483,"RIB","Rivière (bord)","Draînage","C-DRA-RIVIERE-BORD","g"],[484,"RIC","Rivière (centre)","Draînage","C-DRA-RIVIERE-CENTRE","g"],[485,"RUB","Ruisseau (bord)","Draînage","C-DRA-RIVIERE-BORD","g"],[486,"RUC","Ruisseau (centre)","Draînage","C-DRA-RIVIERE-CENTRE","g"],[487,"ZOI","Zone inondable","Draînage","C-DRA-ZONE-INONDABLE","g"],[488,"DIE","Divers (eaux)","Draînage","C-DRA-DIVERS","g"],[177,"VFC","Voie ferrée (centre)","Ferroviaire","C-FER-VOIE","g"],[178,"RBI","Rail (bord intérieur)","Ferroviaire","C-FER-RAIL","g"],[244,"IPN","Indicateur de passage à niveau","Ferroviaire","C-FER-ACCESSOIRE","g"],[245,"LPN","Lanterne de passage à niveau","Ferroviaire","C-FER-ACCESSOIRE","g"],[246,"BPN","Barrière de passage à niveau","Ferroviaire","C-FER-ACCESSOIRE","g"],[247,"AVF","Aiguillage de voie ferrée","Ferroviaire","C-FER-ACCESSOIRE","g"],[438,"PCA","Poteau caténaire","Ferroviaire","C-FER-ACCESSOIRE","g"],[444,"DIF","Divers (ferroviare)","Ferroviaire","C-FER-ACCESSOIRE","g"],[900,"TIE","Traverse de Voie Ferrée (Tie)","Ferroviaire","C-FER-ACCESSOIRE","c"],[4000,"BLL","Ballast","Ferroviaire","C-FER-ACCESSOIRE","c"],[4001,"PIE","Piedestal","Ferroviaire","C-FER-ACCESSOIRE","c"],[161,"FPS","Fût de panneau de petite signalisation","Signalisation et éclairage","C-SIG-PETITE","g"],[162,"MDC","Marquage axial double continu","Signalisation et éclairage","C-SIG-MARQ-DOUB-CONT","g"],[163,"MDM","Marquage axial double mixte","Signalisation et éclairage","C-SIG-MARQ-DOUB-MIXT","g"],[164,"FSL","Fût de supersignalisation latérale","Signalisation et éclairage","C-SIG-SUPER-LATERALE","g"],[165,"FSA","Fût de supersignalisation aérienne (portique)","Signalisation et éclairage","C-SIG-SUPER-AERIENNE","g"],[166,"MCO","Marquage de continuité","Signalisation et éclairage","C-SIG-MARQ-CONTINUIT","g"],[167,"MAG","Marquage de guidage","Signalisation et éclairage","C-SIG-MARQ-GUIDAGE","g"],[168,"MAC","Marquage simple continu / Ligne de rive","Signalisation et éclairage","C-SIG-MARQ-SIMP-CONT","g"],[169,"MAD","Marquage axial simple discontinue","Signalisation et éclairage","C-SIG-MARQ-DISCONTIN","g"],[171,"MVR","Marquage de voie réservée","Signalisation et éclairage","C-SIG-MARQ-VOI-RESER","g"],[172,"FPP","Fût de panneau publicitaire","Signalisation et éclairage","C-SIG-PANN-PUBLICITA","g"],[173,"PAN","Bord de panneau de signalisation (routière et autres)","Signalisation et éclairage","C-SIG-PANNEAU","g"],[174,"MPI","Flèche directionnelle sur chaussée (symbole ou pictogramme)","Signalisation et éclairage","C-SIG-MARQ-PICTOGRAM","g"],[206,"LAC","Lanterne clignotante","Signalisation et éclairage","C-SIG-FEUX","g"],[207,"BOD","Boucle de détection","Signalisation et éclairage","C-SIG-FEUX","g"],[210,"LPO","Lampadaire à potence (sur poteau de bois sans services publics)","Signalisation et éclairage","C-SIG-ECLAIRAGE","g"],[224,"LAS","Lampadaire simple","Signalisation et éclairage","C-SIG-ECLAIRAGE","g"],[225,"LAD","Lampadaire double","Signalisation et éclairage","C-SIG-ECLAIRAGE","g"],[226,"LAM","Lampadaire multiple (haut mât)","Signalisation et éclairage","C-SIG-ECLAIRAGE","g"],[227,"LAP","Lampadaire de promenade","Signalisation et éclairage","C-SIG-ECLAIRAGE","g"],[228,"LAV","Feux verticaux","Signalisation et éclairage","C-SIG-FEUX","g"],[229,"LAH","Feux horizontaux","Signalisation et éclairage","C-SIG-FEUX","g"],[230,"LAL","Feux avec lampadaire","Signalisation et éclairage","C-SIG-FEUX","g"],[237,"LPI","Feux pour piétons","Signalisation et éclairage","C-SIG-FEUX","g"],[369,"CAM","Caméra-vidéo","Signalisation et éclairage","C-SIG-ACCESSOIRE","d"],[370,"CTR","Capteur","Signalisation et éclairage","C-SIG-ACCESSOIRE","d"],[371,"CMR","Compteur","Signalisation et éclairage","C-SIG-ACCESSOIRE","d"],[372,"DTR","Détecteur","Signalisation et éclairage","C-SIG-ACCESSOIRE","d"],[30,"LIR","Ligne de référence, de centre, d'opération, etc.","Géométrie","C-GEO-LIGNE-REFERENC","d"],[299,"PCT","Point calculé sur le terrain","Géométrie","C-GEO-POINT-CALCUL","d"],[300,"PCB","Point calculé dans le bureau","Géométrie","C-GEO-POINT-CALCUL","d"],[301,"PCC","Point calculé pour cadastre","Géométrie","C-GEO-POINT-CALCUL","d"],[405,"LCL","Centre ligne","Géométrie","C-GEO-LIGNE-REFERENC","d"],[406,"AXE","Axe","Géométrie","C-GEO-LIGNE-REFERENC","d"],[419,"CHA","Chaînage","Géométrie","C-GEO-LIGNE-REFERENC","g"],[1000,"CAB","Caisson AV Bétonnage","TQC STRUCTURE","C-STR-CAISSON-AV-BETON","g"],[1100,"CTQ","Caisson TQC","TQC STRUCTURE","C-STR-CAISSON-TQC","d"],[2000,"COL","Colonne AV Betonnage","TQC STRUCTURE","C-STR-COLONNE-AV-BETON","g"],[2100,"COT","Colonne TQC","TQC STRUCTURE","C-STR-COLONNE-TQC","g"],[2200,"CAC","Colonne d'acier","TQC STRUCTURE","C-STR-COLONNE-ACIER","g"],[3000,"ECB","Écrou AV Beton","TQC STRUCTURE","C-STR-ECROU-AV-BETON","d"],[3001,"CHB","Chevêtre AV Beton","TQC STRUCTURE","C-STR-CHEVETRE-AV-BETON","d"],[3002,"ASB","Assise AV Beton","TQC STRUCTURE","C-STR-ASSISE-AV-BETON","d"],[3003,"CCB","Clé Cis. AV Beton","TQC STRUCTURE","C-STR-CLE-CIS-AV-BETON","d"],[3004,"PTB","PT AV Béton","TQC STRUCTURE","C-STR-DIVERS_STRUCTURE","d"],[3100,"ECT","Écrou TQC","TQC STRUCTURE","C-STR-ECROU-TQC","d"],[3101,"CHT","Chevêtre TQC","TQC STRUCTURE","C-STR-CHEVETRE-TQC","d"],[3102,"AST","Assise TQC","TQC STRUCTURE","C-STR-ASSISE-TQC","d"],[3103,"CCT","Clé Cisaillement TQC","TQC STRUCTURE","C-STR-CLE-CIS-TQC","d"],[3104,"PTC","PT TQC","TQC STRUCTURE","C-STR-DIVERS_STRUCTURE","d"],[61,"CLO","Clôture (autre qu'à mailles serrées)","Information Foncière","C-FON-CLOTURE","g"],[63,"CLM","Clôture Frost","Information Foncière","C-FON-CLOTURE-MAILLE","g"],[71,"OCC","Limite d'occupation","Information Foncière","C-FON-OCCUPATION","g"],[73,"PRO","Prolongement","Information Foncière","C-FON-OCCUPATION","g"],[87,"MUM","Axe de mur mitoyen","Information Foncière","C-FON-MUR-MITOYEN","d"],[98,"ALR","Alignement de roches","Information Foncière","C-FON-ALIGNEM-ROCHES","d"],[200,"BRR","Barrière de clôture (tous types)","Information Foncière","C-FON-CLOTURE","g"],[108,"FME","Frontière de modélisation extérieure","Infrastructure routière","C-MOD-FRONTIERE","g"],[109,"FMI","Frontière de modélisation intérieure (aire non modélisable)","Infrastructure routière","C-MOD-FRONTIERE","g"],[170,"ANB","Bord d'accotement non pavé","Infrastructure routière","C-VOI-ACCOT-NONPAVE","g"],[175,"PAC","Centre de pavage","Infrastructure routière","C-VOI-PAVAGE-CENTRE","g"],[176,"GRC","Centre de gravier","Infrastructure routière","C-VOI-GRAVIER-CENTRE","g"],[180,"ECG","Entrée, chemin privé en gravier","Infrastructure routière","C-VOI-ENTREE-GRAVIER","g"],[181,"PAB","Bord de pavage (béton ou asphalte)","Infrastructure routière","C-VOI-PAVAGE-BORD","g"],[182,"GRB","Bord de gravier","Infrastructure routière","C-VOI-GRAVIER-BORD","g"],[183,"ECP","Entrée, chemin privé pavé","Infrastructure routière","C-VOI-ENTREE-PAVE","g"],[184,"GNI","Glissière non-identifié (face)","Infrastructure routière","C-VOI-GLI-NON-ID","g"],[185,"BOR","Bord de bordure","Infrastructure routière","C-VOI-TROTTOI-BORDUR","g"],[186,"APB","Bord d'accotement pavé","Infrastructure routière","C-VOI-ACCOT-PAVE","g"],[187,"TRO","Bord de trottoir","Infrastructure routière","C-VOI-TROTTOI-BORDUR","g"],[191,"GTB","Glissière en tôle ondulée, poteau de bois (face)","Infrastructure routière","C-VOI-GLI-TOL-BO","g"],[192,"GTA","Glissière en tôle ondulée, poteau d'acier (face)","Infrastructure routière","C-VOI-GLI-TOL-AC","g"],[193,"GBD","Glissière de béton à deux faces (centre)","Infrastructure routière","C-VOI-GLI-BET-2F","g"],[194,"GCA","Glissière en câbles, poteau d'acier (face)","Infrastructure routière","C-VOI-GLI-CAB-AC","g"],[198,"BPR","Borne de protection","Infrastructure routière","C-VOI-PROTECTION","g"],[201,"GBU","Glissière de béton à une face (bas)","Infrastructure routière","C-VOI-GLI-BET-1F","g"],[202,"GCB","Glissière en câbles, poteau de bois (face)","Infrastructure routière","C-VOI-GLI-CAB-BO","g"],[203,"GTU","Glissière en tube d'acier, poteau d'acier (face)","Infrastructure routière","C-VOI-GLI-TUB-AC","g"],[264,"SON","Sondage géotechnique","Infrastructure routière","C-MOD-SONDAGE","d"],[267,"BRG","Bande rugueuse","Infrastructure routière","C-VOI-BANDE","d"],[347,"PAE","Palier limite extérieur","Infrastructure routière","C-MOD-PALIER-EXT","d"],[348,"PAI","Palier limite intérieur","Infrastructure routière","C-MOD-PALIER-INT","d"],[349,"PDR","Prédécoupage roc","Infrastructure routière","C-MOD-PREDECOUP-ROC","d"],[350,"TNA","Terrain naturel à jour","Infrastructure routière","C-MOD-INITIAL","d"],[351,"TVG","Terre Végétale","Infrastructure routière","C-MOD-INITIAL","d"],[352,"ROS","Roc en surface","Infrastructure routière","C-TOP-ROC-EN-SURFACE","d"],[353,"SAV","Savane","Infrastructure routière","C-MOD-INITIAL","d"],[354,"SOI","Sol initial","Infrastructure routière","C-MOD-INITIAL","d"],[355,"ROI","Roc initial","Infrastructure routière","C-MOD-INITIAL","d"],[356,"SOF","Sol final, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[357,"ROF","Roc final, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[358,"SEF","Surface de conception finale, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[359,"SPR","Sous-profil, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[360,"RER","Dessous de revêtement de roulement, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[361,"REB","Dessous de revêtement de base, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[362,"FND","Ligne de fondation ou fondation supérieure, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[363,"FIN","Ligne de fondation inférieure / couche de transition, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[364,"SFO","Ligne de sous-fondation, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[365,"INF","Ligne d'infrastructure, tel que construit","Infrastructure routière","C-MOD-FINAL","d"],[367,"GDC","Glissière à 2 câbles, poteaux d'acier","Infrastructure routière","C-VOI-GLI-CAB-AC-2F","d"],[368,"GDF","Glissière à 2 faces en tôle ondulée, poteau d'acier","Infrastructure routière","C-VOI-GLI-TOL-AC-2F","d"],[381,"EXC","Excavation","Infrastructure routière","C-TOP-EXCAVATION","d"],[385,"JER","Jersey (mur séparateur)","Infrastructure routière","C-VOI-GLI-BET-2F","d"],[393,"TSI","Trait de Scie","Infrastructure routière","C-VOI-DIVERS","d"],[397,"GFO","Garde fou","Infrastructure routière","C-STR-PARAPET","d"],[402,"FOR","Forage","Infrastructure routière","C-MOD-SONDAGE","d"],[404,"PAL","Palplanche","Infrastructure routière","C-STR-PALPLANCHE","d"],[408,"REL","Remblai léger","Infrastructure routière","C-TOP-DIVERS","d"],[417,"PDT","Plaque de tassement","Infrastructure routière","C-MOD-SONDAGE","g"],[437,"COB","Cobra (type de forage)","Infrastructure routière","C-MOD-SONDAGE","g"],[440,"SCI","Scissomètre","Infrastructure routière","C-FER-ACCESSOIRE","g"],[441,"TPE","Trou de percolation","Infrastructure routière","C-MOD-SONDAGE","g"],[454,"SUR","Sur-excavation","Infrastructure routière","C-TOP-EXCAVATION","g"],[540,"EBE","Entrée de Béton","Infrastructure routière","C-BAT-ACCES-BETON","g"],[541,"EPU","Revêtement en pavé unis (Entrée pavé unis )","Infrastructure routière","C-BAT-ACCES-PAVE-UNI","g"],[542,"PCY","Piste cyclable","Infrastructure routière","C-VOI-PISTE-CYCLABLE","g"],[543,"SEN","Sentier (bord)","Infrastructure routière","C-VOI-SENTIER","g"],[544,"SEC","Sentier (centre)","Infrastructure routière","C-VOI-SENTIER","g"],[545,"DIR","Divers (Rues, Routes)","Infrastructure routière","C-VOI-DIVERS","g"],[546,"DTV","Décapage terre végétale","Infrastructure routière","C-TOP-DÉCAPAGE","g"],[610,"BEP","Béton projeté","Infrastructure routière","C-VOI-BET-PROJETE","g"],[670,"CRE","Cours d'eau voirie","Infrastructure routière","C-VOI-COURS-EAU-VOIRIE","g"],[903,"TRE","Terre remaniée-EMPRUNT","Infrastructure routière","C-VOI-TERRE-REMAN","d"],[904,"PNE","Pierre nette","Infrastructure routière","C-VOI-PC50","d"],[905,"PC0","Pierre concasse 0-50","Infrastructure routière","C-VOI-PC50","d"],[906,"PC5","Pierre concasse 50-300","Infrastructure routière","C-VOI-PC300","d"],[907,"MMR","Matériaux recyclé MR","Infrastructure routière","C-VOI-MR","d"],[908,"SAB","Sable","Infrastructure routière","C-VOI-SABLE","d"],[909,"MG2","MG-20","Infrastructure routière","C-VOI-MG20","d"],[911,"MG1","MG-112","Infrastructure routière","C-VOI-MG112","d"],[913,"MG5","MG-56","Infrastructure routière","C-VOI-MG56","d"],[916,"PSP","Poussière de pierre","Infrastructure routière","C-VOI-POU-PIERRE","d"],[1,"CPV","Contrôle photo verticale","Repères","C-REP-CONTROLE-PHOTO","g"],[2,"CPH","Contrôle photo horizontale","Repères","C-REP-CONTROLE-PHOTO","g"],[3,"CPT","Contrôle photo tridimensionnel","Repères","C-REP-CONTROLE-PHOTO","d"],[4,"CLU","Clou","Repères","C-REP-ARPENTAGE","d"],[6,"CPK","Clou p.k.","Repères","C-REP-CHEMINEMENT","g"],[7,"MOD","Monument délimitatif","Repères","C-REP-ARPENTAGE","g"],[8,"PIB","Piquet de bois (repère)","Repères","C-REP-ARPENTAGE","d"],[9,"RGI","Repère géodésique intégré (SCOPQ)","Repères","C-REP-GEODESIQUE","d"],[10,"RGN","Repère GPS, non intégré","Repères","C-REP-GEODESIQUE","g"],[14,"RAI","Repère altimétrique intégré (SCOPQ)","Repères","C-REP-GEODESIQUE","g"],[15,"RAP","Repère d'arpentage primitif","Repères","C-REP-ARPENTAGE","g"],[17,"RCS","Repère de cheminement (station)","Repères","C-REP-CHEMINEMENT","g"],[18,"RAL","Repère altimétrique","Repères","C-REP-CHEMINEMENT","g"],[19,"RIP","Repère identifié planté","Repères","C-REP-ARPENTAGE","g"],[20,"TUF","Tuyau de fer","Repères","C-REP-ARPENTAGE","g"],[21,"RAT","Repère d'arpentage trouvé","Repères","C-REP-ARPENTAGE","g"],[24,"TIF","Tige de fer","Repères","C-REP-ARPENTAGE","g"],[26,"ALP","Arbre/ligne plaquée","Repères","C-REP-ARPENTAGE","d"],[27,"MGR","Marque gravée","Repères","C-REP-ARPENTAGE","d"],[28,"BAL","Balise témoin de point géodésique","Repères","C-REP-GEODESIQUE","d"],[29,"PIC","Piquet de clôture","Repères","C-REP-ARPENTAGE","d"],[400,"POC","Point de contrôle (autre que clou, tiges)","Repères","C-REP-CHEMINEMENT","d"],[410,"STT","Station temporaire","Repères","C-REP-CHEMINEMENT","d"],[449,"TRA","Trou d'arpentage","Repères","C-STR-TROU_ARPENTAGE","g"],[455,"BOC","Borne commune","Repères","C-SER-DIVERS","g"],[650,"CIB","Cible de station","Repères","C-REP-CIBLES","g"],[651,"BIN","Bille de Nivellement","Repères","C-REP-GEODESIQUE","g"],[652,"MOA","Monument station d'arpentage","Repères","C-REP-GEODESIQUE","g"],[653,"PCN","Poinçon (punch)","Repères","C-REP-ARPENTAGE","g"],[654,"PIN","Tige pour prisme ancré","Repères","C-REP-ARPENTAGE","g"],[700,"FER","Vérification-Fermeture","Repères","C-REP-ARPENTAGE","g"],[701,"OUV","Ouverture","Repères","C-REP-POLYGONALE","d"],[56,"ALA","Alignement d'arbres","Végétation","C-VEG-ALIGNEM-ARBRES","g"],[75,"BOL","Limite de boisé","Végétation","C-VEG-BOISE","g"],[80,"HAC","Centre de haie","Végétation","C-VEG-HAIE","d"],[90,"PLL","Limite de plantation","Végétation","C-VEG-PLANTATION","d"],[136,"CLI","Limite de culture","Végétation","C-VEG-CULTURE","d"],[280,"ARC","Arbre conifère","Végétation","C-VEG-ARBRE","d"],[281,"ARF","Arbre feuillu","Végétation","C-VEG-ARBRE","d"],[282,"ARB","Arbuste","Végétation","C-VEG-ARBRE","d"],[283,"MAR","Bord de marécage","Végétation","C-VEG-MARECAGE","d"],[489,"AMP","Aménagement paysagé","Végétation","C-VEG-PLANTATION","g"],[491,"ENS","Ensemencement","Végétation","C-VEG-ENGAZONNEMENT","g"],[492,"JAL","Jardin limite","Végétation","C-VEG-JARDIN-LIMITE","g"],[493,"SCH","Souche","Végétation","C-VEG-ARBRE","g"],[494,"DVE","Divers (Végétation)","Végétation","C-VEG-DIVERS","g"],[81,"TAH","Haut de talus","Topographie","C-TOP-TALUS-HAUT","d"],[82,"TAB","Bas de talus","Topographie","C-TOP-TALUS-BAS","d"],[84,"DEC","Décrochement de terrain","Topographie","C-TOP-DECROCHEMENT","d"],[89,"ROC","Limite de roc en surface","Topographie","C-TOP-ROC-EN-SURFACE","d"],[91,"POB","Point coté bathymétrique","Topographie","C-TOP-COTE-BATHYMETR","d"],[94,"POA","Point topo","Topographie","C-TOP-COTE-ALTIME","d"],[95,"CHP","Changement de pente","Topographie","C-TOP-CHANG-PENTE","d"],[96,"CPA","Changement de pente approximatif (photo : imprécision en élévation <1m)","Topographie","C-TOP-CHANG-PENTE-AP","d"],[97,"PAA","Point coté altimétrique approximatif (photo : imprécision en élévation <1m)","Topographie","C-TOP-COTE-ALTIME-AP","d"],[99,"BEM","Banc d'emprunt","Topographie","C-TOP-BANC-EMPRUNT","d"],[289,"EMP","Empilement (tas, matériaux, etc.)","Topographie","C-TOP-EMPILEMENT","d"],[298,"DIV","Divers","Topographie","C-TOP-DIVERS","d"],[428,"BET","Béton","Topographie","C-STR-PONT","g"],[430,"TNN","Terrain initial","Topographie","C-MOD-INITIAL","g"],[600,"ARC","Fouilles archéologiques","Topographie","C-TOP-FOUIL-ARCHEO","g"],[601,"FOF","Fond de fouille","Topographie","C-TOP-FOND-FOUILLE","g"],[83,"MUS","Mur de soutènement","Structures","C-STR-MUR-SOUTENEMEN","d"],[131,"MAA","Massif d'ancrage (base de béton)","Structures","C-STR-MASSIF-ANCRAGE","d"],[139,"PIL","Pilier ou fût","Structures","C-STR-PONT","g"],[143,"BUT","Butoir","Structures","C-STR-BUTOIR","g"],[146,"JNT","Joint dilatation","Structures","C-STR-JOINT","g"],[147,"QUA","Quai","Structures","C-STR-QUAI","g"],[149,"PTE","Dessous de poutre","Structures","C-STR-PONT","g"],[179,"PST","Parapet sur structure","Structures","C-STR-PARAPET","g"],[188,"SEM","Semelle","Structures","C-STR-PONT","g"],[189,"PON","Pont (tablier)","Structures","C-STR-PONT","g"],[190,"CUL","Culée de pont, de pont d'étagement, de passerelle","Structures","C-STR-PONT","g"],[255,"DEB","Débarcadère","Structures","C-STR-DEBARCADERE","d"],[287,"BAG","Barrage","Structures","C-STR-BARRAGE","d"],[288,"PAS","Passerelle (tablier)","Structures","C-STR-PONT","d"],[382,"PUA","Pieu autre","Structures","C-STR-PIEU","d"],[383,"PUF","Pieu de fondation","Structures","C-STR-PIEU","d"],[384,"ANC","Ancrage","Structures","C-STR-ANCRAGE","d"],[386,"POP","Poutre","Structures","C-STR-PONT","d"],[387,"COF","Coffrage","Structures","C-STR-COFFRAGE","d"],[388,"ARM","Armature","Structures","C-STR-ARMATURE","d"],[389,"ARA","Armature en attente","Structures","C-STR-ARMATURE","d"],[390,"POS","Pieux OCS","Structures","C-STR-PIEU","d"],[391,"TAC","Tube d'acier (OCS)","Structures","C-STR-PIEU","d"],[394,"DAT","Dalle de transition","Structures","C-STR-PONT","d"],[395,"CHR","Chambre de regard","Structures","C-STR-DIVERS_STRUCTURE","d"],[396,"FUT","Fût","Structures","C-STR-PONT","d"],[414,"GCP","Garde corps","Structures","C-STR-PONT","g"],[407,"MCR","Main courante","Structures","C-STR-PARAPET","d"],[416,"PPT","Plaque podotactile","Structures","C-VOI-DIVERS","d"],[420,"GRH","Grille horizontale","Structures","C-STR-DIVERS_STRUCTURE","d"],[426,"PLQ","Plaque de liaison…","Structures","C-STR-DIVERS_STRUCTURE","d"],[398,"GAG","Garde grêve","Structures","C-STR-PARAPET","d"],[399,"JOF","Joint fixe","Structures","C-STR-JOINT","d"],[401,"SPD","Pied d'ancrage (spud)","Structures","C-STR-ANCRAGE","d"],[422,"PLA","Plaque d'appui","Structures","C-STR-APPUI","g"],[423,"ANP","Plaque d'ancrage (Mur Rideau)","Structures","C-STR-PLAQUE-ANCRAGE","g"],[429,"APA","Appareil d'appui","Structures","C-STR-APPUI","g"],[436,"BLB","Bloc béton","Structures","C-STR-BLOC-BETON","g"],[442,"GOU","Gousset","Structures","C-STR-PONT","g"],[448,"PNT","Pont","Structures","C-STR-PONT","g"],[450,"TUN","Tunnel","Structures","C-STR-TUNNEL","g"],[451,"VIA","Viaduc","Structures","C-STR-VIADUC","g"],[452,"VOU","Voûte","Structures","C-STR-VOUTE","g"],[453,"DIS","Divers (structure)","Structures","C-STR-DIVERS_STRUCTURE","g"],[547,"MRT","Murêt","Structures","C-STR-MURET","g"],[660,"MUB","Mur Berlinois","Structures","C-STR-MUR-BERLINOIS","g"],[661,"ROB","Boulon ancrage (Rocbolt)","Structures","C-STR-ROC-BOLT","g"],[662,"DYN","Dynamitage / Blast","Structures","C-STR-DYNAMITAGE-BLAST","g"],[755,"PFO","Patron de Forage","Structures","C-STR-PATRON-FORAGE","g"],[918,"ETA","Étaiement","Structures","C-STR-DIVERS_STRUCTURE","d"],[919,"DIA","Diaphragme","Structures","C-STR-DIVERS_STRUCTURE","d"],[920,"COU","Couronnement MSE","Structures","C-STR-DIVERS_STRUCTURE","d"],[921,"INC","Inclusion MSE","Structures","C-STR-DIVERS_STRUCTURE","d"],[922,"PRE","Pré-Dalle","Structures","C-STR-DIVERS_STRUCTURE","d"],[923,"RAG","Rail Gomaco","Structures","C-STR-DIVERS_STRUCTURE","d"],[925,"PEX","Panneau Extérieur","Structures","C-STR-DIVERS_STRUCTURE","d"],[4003,"CAI","Casing","Structures","C-STR-CAISSON","d"],[4004,"LDE","Ligne de démolition","Structures","C-TOP-DIVERS","d"],[4005,"CIM","Cintre métallique (rib)","Structures","C-STR-DIVERS_STRUCTURE","d"],[205,"PNI","Poteau non-identifié (levé photo)","Services publics","C-SER-ELEC-TEL-NON-ID","g"],[208,"PUV","Puits de ventilation","Services publics","C-SER-ELEC-TEL-SOUT","g"],[209,"RCE","Repère de câble électrique souterrain","Services publics","C-SER-ELEC-SOUTER","g"],[211,"POE","Poteau, électricité","Services publics","C-SER-ELEC","g"],[212,"POT","Poteau, téléphone","Services publics","C-SER-TEL","g"],[213,"PET","Poteau, électricité, téléphone","Services publics","C-SER-ELEC-TEL","g"],[214,"POG","Poteau guide","Services publics","C-SER-ELEC-TEL-HAUBAN","g"],[215,"PTR","Poteau, électricité, transformateur","Services publics","C-SER-ELEC","g"],[216,"PTT","Poteau, électricité, téléphone, transformateur","Services publics","C-SER-ELEC-TEL","g"],[217,"PEL","Poteau, électricité, lampadaire","Services publics","C-SER-ELEC-LAMPAD","g"],[218,"PTL","Poteau, électricité, téléphone, lampadaire","Services publics","C-SER-ELEC-TEL-LAMP","g"],[219,"PLT","Poteau, électricité, lampadaire, transformateur","Services publics","C-SER-ELEC-LAMPAD","g"],[220,"PLR","Poteau, électricité, téléphone, lampadaire, transformateur","Services publics","C-SER-ELEC-TEL-LAMP","g"],[221,"HAU","Hauban","Services publics","C-SER-ELEC-TEL-HAUBAN","g"],[222,"MTI","Massif de tirage","Services publics","C-SER-ELEC-SOUTER","g"],[223,"PYL","Massif d'ancrage de pylône électrique (centre)","Services publics","C-SER-ELEC","g"],[232,"REG","Regard de service public non-identifié","Services publics","C-SER-REGAR-NON-ID","g"],[238,"BOF","Borne-fontaine","Services publics","C-SER-AQUEDUC-ELEMENT","g"],[239,"BIM","Borne d'injection de mousse carbonique","Services publics","C-SER-MOUSSE-CARBONI","g"],[240,"VAQ","Valve d'aqueduc","Services publics","C-SER-AQUEDUC-ELEMENT","g"],[242,"RCT","Repère de câble téléphonique souterrain","Services publics","C-SER-TEL-SOUTER","g"],[243,"RGZ","Repère de gazoduc","Services publics","C-SER-GAZODUC","g"],[248,"BJE","Boite de jonction / distribution électrique","Services publics","C-SER-ELEC","g"],[249,"PTG","Poteau de télégraphe","Services publics","C-SER-ELEC","g"],[250,"TES","Transformateur de ligne électrique souterraine","Services publics","C-SER-ELEC-SOUTER","g"],[251,"RAQ","Regard d'aqueduc","Services publics","C-SER-AQUEDUC-ELEMENT","g"],[252,"REC","Regard d'égout combiné","Services publics","C-SER-EGOUT-COMBINE-ELEMENT","g"],[253,"BJT","Boite de jonction/distribution téléphonique","Services publics","C-SER-TEL","g"],[256,"GAZ","Gazoduc","Services publics","C-SER-GAZODUC","d"],[258,"REE","Regard de chambre électrique souterraine","Services publics","C-SER-ELEC-SOUTER","d"],[259,"RET","Regard de chambre téléphonique souterraine","Services publics","C-SER-TEL-SOUTER","d"],[260,"RES","Regard d'égout sanitaire","Services publics","C-SER-EGOUT-SANITAIR-ELEMENT","d"],[261,"RGA","Regard de gazoduc","Services publics","C-SER-GAZODUC","d"],[262,"OLE","Oléoduc","Services publics","C-SER-OLEODUC","d"],[263,"REO","Repère d'oléoduc","Services publics","C-SER-OLEODUC","d"],[265,"CAE","Caniveau à cables électrique","Services publics","C-SER-ELEC-SOUTER","d"],[268,"CAQ","Chambre d'aqueduc","Services publics","C-SER-AQUEDUC-ELEMENT","d"],[295,"CTA","Câble téléphonique aérien","Services publics","C-SER-TEL","d"],[296,"CEA","Câble électrique aérien","Services publics","C-SER-ELEC-TEL-AERIEN","d"],[380,"CES","Câble électrique souterrain","Services publics","C-SER-ELEC-SOUTER","d"],[392,"MAT","Mise-à-la-terre (MALT)","Services publics","C-SER-ELEC","d"],[424,"MCS","Manchon (Sleeves)","Services publics","C-SER-MANCHON","g"],[425,"CON","Conduit électrique","Services publics","C-SER-ELEC-CONDUIT","g"],[435,"PYL","Pylone","Services publics","C-SER-ELEC","g"],[456,"BOG","Boite de Gaz","Services publics","C-SER-GAZODUC","g"],[457,"BOH","Boite HQ","Services publics","C-SER-ELEC","g"],[458,"BOV","Boite Fibre optique internet","Services publics","C-SER-TEL","g"],[459,"CIA","Câble internet aérien","Services publics","C-SER-TEL-AERIEN-FO","g"],[460,"CIS","Câble internet souterrain","Services publics","C-SER-TEL-SOUTER-FO","g"],[461,"COG","Conduite Gazoduc souterrain","Services publics","C-SER-GAZODUC-SOUTER","g"],[463,"GAF","Gaine pour Fibre optique","Services publics","C-SER-TEL-SOUTER-CONDUIT-FO","g"],[462,"COO","Conduite Oléoduc souterrain","Services publics","C-SER-OLEODUC SOUTER","g"],[464,"PAM","Parcomètre","Services publics","C-SER-ACCESSOIRE","g"],[465,"RTI","Regard Fibre Optique","Services publics","C-SER-TEL","g"],[466,"RPI","Repère câble fibre optique souterrain","Services publics","C-SER-TEL-SOUTER-FO","g"],[467,"RPA","Repère conduite aqueduc souterrain","Services publics","C-SER-AQUEDUC","g"],[468,"DIU","Divers (Utilités publique)","Services publics","C-SER-DIVERS","g"],[474,"PPO","Poste de pompage","Services publics","C-DRA-POSTE-POMPAGE","g"],[475,"PUT","Puisard de trottoir","Services publics","C-DRA-EGOUT-PLUVIAL-ELEMENT","g"],[476,"PUR","Puisard regard","Services publics","C-DRA-EGOUT-PLUVIAL-ELEMENT","d"],[477,"SOU","Source","Services publics","C-DRA-SOURCE","g"],[479,"VAA","Vanne (autres types)","Services publics","C-DRA-ELEMENT","g"],[495,"AQS","Aqueduc secondaire","Services publics","C-SER-AQUEDUC","g"],[496,"EGP","Conduite égout pluvial","Services publics","C-DRA-EGOUT-PLUVIAL","g"],[497,"EGS","Conduite égout sanitaire","Services publics","C-SER-EGOUT-SANITAIR","g"],[498,"EGC","Conduite égout combiné","Services publics","C-SER-EGOUT-COMBINE","g"],[499,"BRA","Branchement (Conduite)","Services publics","C-SER-BRANCHEMENT-COND","g"],[620,"BRI","Bride","Services publics","C-SER-BRIDE","g"],[917,"AQP","Aqueduc haute-pression","Services publics","C-SER-AQUEDUC","d"],[924,"ANN","Anneau d'étanchéité","Services publics","C-SER-AQUEDUC-ELEMENT","d"]],"layers":{"C-ANNO-MATC":7,"C-ANNO-MATC-PATT":7,"C-ANNO-MATC-TEXT":150,"C-ANNO-TABL":1,"C-ANNO-TABL-PATT":7,"C-ANNO-TABL-TEXT":150,"C-ANNO-TABL-TITL":150,"C-ANNO-TABL-TTBL":5,"C-ANNO-VFRM":150,"C-BAT-ACCES-BETON":33,"C-BAT-ACCES-PAVE-UNI":33,"C-BAT-ACCESSOIRE":33,"C-BAT-ANNEXE":33,"C-BAT-CHAMBRE-ELECTRIQUE":145,"C-BAT-CHAMP-EPURATIO":33,"C-BAT-DIVERS":33,"C-BAT-FONDATION":33,"C-BAT-HACHURE":7,"C-BAT-MEMBRANE-PROJETÉE":36,"C-BAT-MUR-AMENAGEMEN":33,"C-BAT-PRINCIPAL":31,"C-BAT-RUINE":33,"C-BAT-TEXTE":41,"C-BAT-TOITURE":31,"C-DRA-AGRICOLE":121,"C-DRA-BUSE":121,"C-DRA-CANIVEAU":121,"C-DRA-DALOT":121,"C-DRA-DIGUE":121,"C-DRA-DIVERS":121,"C-DRA-DRAIN":121,"C-DRA-EAU-CENTRE":121,"C-DRA-EAU-EXTREME":121,"C-DRA-EAU-JOUR":131,"C-DRA-EAU-NORM-BASS":121,"C-DRA-EAU-NORM-HAUT":121,"C-DRA-EGOUT-PLUVIAL":121,"C-DRA-EGOUT-PLUVIAL-ELEMENT":121,"C-DRA-ELEMENT":121,"C-DRA-FOSSE-BORD":121,"C-DRA-FOSSE-CENTRE":121,"C-DRA-FOSSE-ECOULEM":121,"C-DRA-FOSSE-FOND":121,"C-DRA-HACHURE":7,"C-DRA-MUR":121,"C-DRA-PONCEAU":121,"C-DRA-POSTE-POMPAGE":121,"C-DRA-PROTECTION":121,"C-DRA-RIVE":121,"C-DRA-RIVIERE-BORD":121,"C-DRA-RIVIERE-CENTRE":121,"C-DRA-SOURCE":121,"C-DRA-TEXTE":41,"C-DRA-TRAVAIL":7,"C-DRA-ZONE-INONDABLE":121,"C-ESMT-ROAD":23,"C-FER-ACCESSOIRE":23,"C-FER-BALLAST":23,"C-FER-PIEDESTAL":23,"C-FER-RAIL":23,"C-FER-TEXTE":41,"C-FER-TRAVERSE-RAIL (TIE)":42,"C-FER-VOIE":23,"C-FON-ALIGNEM-ROCHES":43,"C-FON-AUTRES-LIMITE":233,"C-FON-C-ELECTORALE-LIMITE":151,"C-FON-C-FONCIERE-LIMITE":151,"C-FON-CADAS-LIMITE":151,"C-FON-CADAS-LOT":91,"C-FON-CADAS-MONT-ORI":91,"C-FON-CADAS-OFF-DIM":101,"C-FON-CADAS-OFF-LOT":113,"C-FON-CADAS-OFF-NUM":143,"C-FON-CADAS-RANG":151,"C-FON-CLOTURE":43,"C-FON-CLOTURE-MAILLE":43,"C-FON-COMMENTAIRES":7,"C-FON-EMPRISE":211,"C-FON-HACHURE":7,"C-FON-INSCRIPTION":51,"C-FON-MRC-LIMITE":151,"C-FON-MUNICIPAL-LIMITE":151,"C-FON-MUR-MITOYEN":11,"C-FON-OCCUPATION":11,"C-FON-PARCELLE":91,"C-FON-PERIMETRE":91,"C-FON-PERIMETRE-POLY":91,"C-FON-PROPRIETAIRE":91,"C-FON-PROPRIETE":153,"C-FON-RUE":151,"C-FON-SERVITUDE":91,"C-FON-TEXTE":41,"C-FON-ZONAGE":3,"C-GEO-CHAINAGE":241,"C-GEO-COTE":241,"C-GEO-IMA":241,"C-GEO-LIGNE-REFERENC":241,"C-GEO-POINT-CAD-RENO":243,"C-GEO-POINT-CALCUL":243,"C-GEO-POINT-CODE":181,"C-GEO-POINT-ELEV":21,"C-GEO-POINT-FONCIER":243,"C-GEO-POINT-HEXAGONE":91,"C-GEO-POINT-LEVE":243,"C-GEO-POINT-NUMERO":243,"C-GEO-POINT-PRIVE":243,"C-GEO-TEXTE":41,"C-GSR-ANIMAL":131,"C-GSR-COLLISION":5,"C-GSR-DEPASSEMENT":123,"C-GSR-GRAVITE-GRAVE":51,"C-GSR-GRAVITE-LEGER":91,"C-GSR-GRAVITE-MORTEL":1,"C-GSR-INTERSECTION":111,"C-GSR-OBJET":81,"C-GSR-PIETON":151,"C-GSR-TEXTE":41,"C-GSR-VEHICULE":203,"C-GSR-VELO":143,"C-GSR-VIRAGE":63,"C-HYDR-CTCH-DSPT":5,"C-HYDR-CTCH-FPTH-TEXT":7,"C-HYDR-CTCH-FSPT":30,"C-HYDR-CTCH-HDPT":2,"C-HYDR-TEXT":7,"C-MOD-COURB-MAITRESS":203,"C-MOD-COURB-SECONDAI":63,"C-MOD-FINAL":43,"C-MOD-FRONTIERE":21,"C-MOD-GEOTEXTILE":43,"C-MOD-INITIAL":85,"C-MOD-PALIER-EXT":13,"C-MOD-PALIER-INT":83,"C-MOD-PREDECOUP-ROC":85,"C-MOD-SONDAGE":43,"C-MOD-TEXTE":41,"C-MOD-TRAVAIL":7,"C-MOD-TRIANGLE":243,"C-PRO-AQUEDUC":141,"C-PRO-ARGILE":9,"C-PRO-AUTRE":53,"C-PRO-AUTRE-SERVICE":141,"C-PRO-BBBASE":43,"C-PRO-BBROUL":13,"C-PRO-EGOUT-COMBINE":141,"C-PRO-EGOUT-PLUVIAL":141,"C-PRO-EGOUT-SANITAIR":141,"C-PRO-FINEXE":41,"C-PRO-FOND":23,"C-PRO-FONDEXC":83,"C-PRO-FONDINF":51,"C-PRO-FOSSE-D":121,"C-PRO-FOSSE-G":121,"C-PRO-GABARIT":221,"C-PRO-HACHURE":7,"C-PRO-INFRA":121,"C-PRO-LIGNE-REFERENC":241,"C-PRO-LIGNEDEC":81,"C-PRO-PAVEXIST":13,"C-PRO-PONCEAU":121,"C-PRO-ROCFIN":85,"C-PRO-ROCINI":15,"C-PRO-ROCSOND":11,"C-PRO-ROCSURF":223,"C-PRO-ROCTHEO":223,"C-PRO-SFOND":161,"C-PRO-SOLDEC":9,"C-PRO-SOLFIN":43,"C-PRO-SOLGEL":41,"C-PRO-SOLNGEL":163,"C-PRO-TERVEG":93,"C-PRO-TEXTE":41,"C-PRO-TN":91,"C-PRO-TNAERO":55,"C-PRO-TNCONV":213,"C-PRO-TNMNA":61,"C-PRO-TNMOBILE":181,"C-PRO-TNPHOTO":141,"C-PRO-TNTQC":133,"C-PRO-TRAVAIL":7,"C-PROP-BNDY":150,"C-PROP-BRNG":92,"C-PROP-LOTS":6,"C-PROP-RSRV":94,"C-PROP-TEXT":92,"C-RAIL-CANT-VIEW-CNTR":7,"C-RAIL-CANT-VIEW-EQLB":4,"C-RAIL-CANT-VIEW-LEFT":5,"C-RAIL-CANT-VIEW-RGHT":1,"C-RAIL-CANT-VIEW-TEXT":11,"C-RAIL-CANT-VIEW-TICK":254,"C-RAIL-CANT-VIEW-TITL":7,"C-RAIL-CANT-VIEW-TTLB":254,"C-REP-ARPENTAGE":11,"C-REP-CHEMINEMENT":11,"C-REP-CIBLES":11,"C-REP-CONTROLE-PHOTO":11,"C-REP-GEODESIQUE":11,"C-REP-POLYGONALE":11,"C-REP-TEXTE":41,"C-ROAD-ASSM":40,"C-ROAD-ASSM-BLIN":1,"C-ROAD-ASSM-OFFS":1,"C-ROAD-BRNG":1,"C-ROAD-CNTR":1,"C-ROAD-CNTR-N":92,"C-ROAD-CORR":5,"C-ROAD-CORR-BNDY":1,"C-ROAD-CORR-PATT":150,"C-ROAD-CURV":5,"C-ROAD-FEAT":182,"C-ROAD-INTS":5,"C-ROAD-LABL":92,"C-ROAD-LINE":1,"C-ROAD-LINE-EXTN":252,"C-ROAD-LINK":150,"C-ROAD-MARK":212,"C-ROAD-MASS-LINE":7,"C-ROAD-MASS-LINE-FREE":150,"C-ROAD-MASS-LINE-OVER":11,"C-ROAD-MASS-VIEW-GRID-MAJR":252,"C-ROAD-MASS-VIEW-GRID-MINR":254,"C-ROAD-MASS-VIEW-TEXT":11,"C-ROAD-MASS-VIEW-TITL":7,"C-ROAD-MASS-VIEW-TTLB":5,"C-ROAD-PROF":1,"C-ROAD-PROF-ASMC":92,"C-ROAD-PROF-CURV":5,"C-ROAD-PROF-DIAG":150,"C-ROAD-PROF-GRID":150,"C-ROAD-PROF-GRID-GEOM":5,"C-ROAD-PROF-GRID-MAJR":8,"C-ROAD-PROF-GRID-MINR":8,"C-ROAD-PROF-LABL":92,"C-ROAD-PROF-LINE":1,"C-ROAD-PROF-LINE-EXTN":252,"C-ROAD-PROF-LTOF":11,"C-ROAD-PROF-PARB":7,"C-ROAD-PROF-PNTS":252,"C-ROAD-PROF-PROJ":92,"C-ROAD-PROF-PROP":150,"C-ROAD-PROF-RTOF":1,"C-ROAD-PROF-STAN-GEOM":11,"C-ROAD-PROF-STAN-MAJR":11,"C-ROAD-PROF-STAN-MINR":11,"C-ROAD-PROF-TEXT":11,"C-ROAD-PROF-TICK":7,"C-ROAD-PROF-TITL":11,"C-ROAD-PROF-TTLB":5,"C-ROAD-SAMP":150,"C-ROAD-SAMP-TEXT":11,"C-ROAD-SECT":7,"C-ROAD-SECT-BUFR":6,"C-ROAD-SECT-DIAG":212,"C-ROAD-SECT-GRID":7,"C-ROAD-SECT-LABL":92,"C-ROAD-SECT-N":150,"C-ROAD-SECT-PROJ":92,"C-ROAD-SECT-TEXT":92,"C-ROAD-SECT-TICK":7,"C-ROAD-SECT-TITL":92,"C-ROAD-SECT-TTLB":5,"C-ROAD-SELV-VIEW-TEXT":11,"C-ROAD-SELV-VIEW-TICK":7,"C-ROAD-SELV-VIEW-TITL":11,"C-ROAD-SELV-VIEW-TTLB":5,"C-ROAD-SHAP":32,"C-ROAD-SHAP-PATT":7,"C-ROAD-SPIR":92,"C-ROAD-STAN":2,"C-ROAD-STAN-MAJR":11,"C-ROAD-TEXT":11,"C-SEC-AQUEDUC":141,"C-SEC-ARGILE":9,"C-SEC-AUTRE":53,"C-SEC-AUTRE-SERVICE":141,"C-SEC-BBBASE":43,"C-SEC-BBROUL":13,"C-SEC-DEBLAI":223,"C-SEC-EGOUT-COMBINE":141,"C-SEC-EGOUT-PLUVIAL":141,"C-SEC-EGOUT-SANITAIR":141,"C-SEC-ELEC":57,"C-SEC-ELEMENT":43,"C-SEC-FINEXE":41,"C-SEC-FOND":23,"C-SEC-FONDEXC":83,"C-SEC-FONDINF":51,"C-SEC-GABARIT":221,"C-SEC-HACHURE":7,"C-SEC-INFRA":121,"C-SEC-LIGNEDEC":81,"C-SEC-PAVEXIST":13,"C-SEC-PONCEAU":121,"C-SEC-REMBLAI":73,"C-SEC-ROCFIN":85,"C-SEC-ROCINI":15,"C-SEC-ROCSOND":11,"C-SEC-ROCSURF":223,"C-SEC-ROCTHEO":223,"C-SEC-SFOND":161,"C-SEC-SOLDEC":9,"C-SEC-SOLFIN":43,"C-SEC-SOLGEL":41,"C-SEC-SOLNGEL":163,"C-SEC-TERVEG":101,"C-SEC-TEXTE":41,"C-SEC-TN":91,"C-SEC-TNAERO":55,"C-SEC-TNCONV":213,"C-SEC-TNMNA":61,"C-SEC-TNMOBILE":181,"C-SEC-TNPHOTO":141,"C-SEC-TNTQC":133,"C-SEC-TRAVAIL":7,"C-SEC-VEG":81,"C-SEC-VOLUME":51,"C-SER-ACCESSOIRE":57,"C-SER-ANNEAU-ETANCHEITE":251,"C-SER-AQUEDUC":141,"C-SER-AQUEDUC-ELEMENT":141,"C-SER-BRANCHEMENT-COND":74,"C-SER-BRIDE":145,"C-SER-DIVERS":57,"C-SER-EGOUT-COMBINE":141,"C-SER-EGOUT-COMBINE-ELEMENT":141,"C-SER-EGOUT-REFOULEM":121,"C-SER-EGOUT-SANITAIR":141,"C-SER-EGOUT-SANITAIR-ELEMENT":141,"C-SER-ELEC":57,"C-SER-ELEC-CANIVEAU-CABLE":231,"C-SER-ELEC-CONDUIT":233,"C-SER-ELEC-LAMPAD":57,"C-SER-ELEC-SOUTER":231,"C-SER-ELEC-TEL":57,"C-SER-ELEC-TEL-AERIEN":57,"C-SER-ELEC-TEL-HAUBAN":57,"C-SER-ELEC-TEL-LAMP":57,"C-SER-ELEC-TEL-MASSIF":231,"C-SER-ELEC-TEL-NON-ID":57,"C-SER-ELEC-TEL-SOUT":231,"C-SER-GAZODUC":141,"C-SER-GAZODUC-SOUTER":141,"C-SER-MANCHON":94,"C-SER-MISE-A-LA-TERRE":32,"C-SER-MOUSSE-CARBONI":141,"C-SER-MTQ-SOUTER":231,"C-SER-OLEODUC":141,"C-SER-OLEODUC SOUTER":141,"C-SER-REGAR-NON-ID":141,"C-SER-TEL":57,"C-SER-TEL-AERIEN-FO":231,"C-SER-TEL-SOUTER":231,"C-SER-TEL-SOUTER-CONDUIT-FO":231,"C-SER-TEL-SOUTER-FO":231,"C-SER-TEXTE":41,"C-SER-VIDEO-SOUTER":231,"C-SIG-ACCESSOIRE":93,"C-SIG-ECLAIRAGE":93,"C-SIG-ELE-CON-SOU-38":231,"C-SIG-ELE-CON-SOU-50":231,"C-SIG-ELE-CON-SOU-ME":231,"C-SIG-ELE-GAINE-EXCA":231,"C-SIG-ELE-GAINE-FORA":231,"C-SIG-FEUX":93,"C-SIG-HACHURE":7,"C-SIG-MARQ-CONTINUIT":73,"C-SIG-MARQ-DISCONTIN":73,"C-SIG-MARQ-DOUB-CONT":73,"C-SIG-MARQ-DOUB-MIXT":73,"C-SIG-MARQ-GUIDAGE":73,"C-SIG-MARQ-PICTOGRAM":73,"C-SIG-MARQ-SIMP-CONT":73,"C-SIG-MARQ-VOI-RESER":73,"C-SIG-PANN-PUBLICITA":93,"C-SIG-PANNEAU":93,"C-SIG-PETITE":93,"C-SIG-SUPER-AERIENNE":93,"C-SIG-SUPER-LATERALE":93,"C-SIG-TEXTE":41,"C-SSWR-CNTR":200,"C-SSWR-PIPE":200,"C-SSWR-PIPE-PATT":7,"C-SSWR-PROF":200,"C-SSWR-STRC":200,"C-SSWR-STRC-PATT":200,"C-SSWR-TEXT":7,"C-STR-ACCESSOIRES":9,"C-STR-ANCRAGE":9,"C-STR-APPUI":9,"C-STR-ARMATURE":9,"C-STR-ASSISE-AV-BETON":150,"C-STR-ASSISE-TQC":203,"C-STR-BARRAGE":9,"C-STR-BLOC-BETON":9,"C-STR-BUTOIR":253,"C-STR-CAISSON":9,"C-STR-CAISSON-AV-BETON":150,"C-STR-CAISSON-TQC":203,"C-STR-CASING":2,"C-STR-CHAMBRE-REGARD":9,"C-STR-CHEVETRE-AV-BETON":150,"C-STR-CHEVETRE-TQC":203,"C-STR-CINTRE METALLIQUE":7,"C-STR-CLE-CIS-AV-BETON":150,"C-STR-CLE-CIS-TQC":203,"C-STR-COFFRAGE":9,"C-STR-COLONNE-ACIER":8,"C-STR-COLONNE-AV-BETON":150,"C-STR-COLONNE-TQC":203,"C-STR-COURONNEMENT-MSE":202,"C-STR-DALLE-TRANS":9,"C-STR-DEBARCADERE":9,"C-STR-DIAPHRAGME":182,"C-STR-DIVERS_STRUCTURE":9,"C-STR-DYNAMITAGE-BLAST":256,"C-STR-ECROU-AV-BETON":150,"C-STR-ECROU-TQC":203,"C-STR-ETAIEMENT":124,"C-STR-HACHURE":7,"C-STR-INCLUSION-MSE":44,"C-STR-JOINT":9,"C-STR-LIGNE-DEMOLITION":203,"C-STR-MASSIF-ANCRAGE":9,"C-STR-MUR-ANTI_BRUIT":9,"C-STR-MUR-BERLINOIS":11,"C-STR-MUR-SOUTENEMEN":9,"C-STR-MURET":9,"C-STR-PALPLANCHE":9,"C-STR-PANNEAU-EXT":245,"C-STR-PARAPET":193,"C-STR-PATRON-FORAGE":55,"C-STR-PIEU":9,"C-STR-PIEUX-OCS":256,"C-STR-PLAQUE-ANCRAGE":36,"C-STR-PONT":9,"C-STR-PRE-DALLE":253,"C-STR-PT-AV-BETON":256,"C-STR-PT-TQC":256,"C-STR-QUAI":9,"C-STR-RAIL-GOMACO":30,"C-STR-ROC-BOLT":201,"C-STR-TEXTE":41,"C-STR-TROU_ARPENTAGE":9,"C-STR-TUBE-AC":256,"C-STR-TUNNEL":9,"C-STR-VIADUC":9,"C-STR-VOUTE":9,"C-STRM-CNTR":170,"C-STRM-PIPE":170,"C-STRM-PIPE-PATT":7,"C-STRM-PROF":170,"C-STRM-STRC":170,"C-STRM-STRC-PATT":7,"C-STRM-TEXT":7,"C-TINN":7,"C-TINN-BNDY":3,"C-TINN-VIEW":9,"C-TOP-BANC-EMPRUNT":233,"C-TOP-CHANG-PENTE":223,"C-TOP-CHANG-PENTE-AP":223,"C-TOP-COTE-ALTIME":223,"C-TOP-COTE-ALTIME-AP":223,"C-TOP-COTE-BATHYMETR":123,"C-TOP-DECROCHEMENT":223,"C-TOP-DIVERS":7,"C-TOP-DÉCAPAGE":223,"C-TOP-EMPILEMENT":223,"C-TOP-EXCAVATION":223,"C-TOP-FOND-FOUILLE":213,"C-TOP-FOUIL-ARCHEO":211,"C-TOP-PHOTO":2,"C-TOP-ROC-EN-SURFACE":223,"C-TOP-TALUS-BAS":223,"C-TOP-TALUS-HAUT":223,"C-TOP-TEXTE":41,"C-TOPO-CONT-TEXT":7,"C-TOPO-CONT-TEXT-N":1,"C-TOPO-FEAT":94,"C-TOPO-GRAD":94,"C-TOPO-GRAD-CUTS":1,"C-TOPO-GRAD-FILL":94,"C-TOPO-MAJR":9,"C-TOPO-MAJR-N":92,"C-TOPO-MINR":8,"C-TOPO-MINR-N":11,"C-TOPO-TEXT":7,"C-TOPO-USER":40,"C-TOPO-WSHD":150,"C-TOPO-WSHD-TEXT":7,"C-VEG-ALIGNEM-ARBRES":81,"C-VEG-ARBRE":81,"C-VEG-BOISE":81,"C-VEG-CULTURE":81,"C-VEG-DIVERS":81,"C-VEG-ENGAZONNEMENT":81,"C-VEG-HACHURE":7,"C-VEG-HAIE":81,"C-VEG-JARDIN-LIMITE":81,"C-VEG-MARECAGE":111,"C-VEG-PLANTATION":81,"C-VEG-TEXTE":41,"C-VOI-ACCES-BATIMENT":9,"C-VOI-ACCOT-NONPAVE":9,"C-VOI-ACCOT-PAVE":9,"C-VOI-AIRE-ENTREPOSAGE":9,"C-VOI-BANDE":9,"C-VOI-BET-PROJETE":252,"C-VOI-CG56":55,"C-VOI-CITERNE":9,"C-VOI-CONTENEUR":9,"C-VOI-COURS-EAU-VOIRIE":153,"C-VOI-DIVERS":9,"C-VOI-ENTREE-GRAVIER":51,"C-VOI-ENTREE-PAVE":51,"C-VOI-GLI-BET-1F":193,"C-VOI-GLI-BET-2F":193,"C-VOI-GLI-CAB-AC":193,"C-VOI-GLI-CAB-AC-2F":193,"C-VOI-GLI-CAB-BO":193,"C-VOI-GLI-NON-ID":193,"C-VOI-GLI-TOL-AC":193,"C-VOI-GLI-TOL-AC-2F":193,"C-VOI-GLI-TOL-BO":193,"C-VOI-GLI-TUB-AC":193,"C-VOI-GRAVIER-BORD":9,"C-VOI-GRAVIER-CENTRE":9,"C-VOI-HACHURE":7,"C-VOI-MG112":57,"C-VOI-MG20":53,"C-VOI-MG56":45,"C-VOI-MR":15,"C-VOI-PAVAGE-BORD":9,"C-VOI-PAVAGE-CENTRE":9,"C-VOI-PC300":19,"C-VOI-PC50":49,"C-VOI-PISTE-CYCLABLE":51,"C-VOI-PLATEFORME":9,"C-VOI-POU-PIERRE":128,"C-VOI-PROTECTION":193,"C-VOI-ROULOTTE":9,"C-VOI-SABLE":59,"C-VOI-SENTIER":51,"C-VOI-TERRE-REMAN":17,"C-VOI-TEXTE":41,"C-VOI-TRAIT-SCIE":14,"C-VOI-TRAVAIL":7,"C-VOI-TROTTOI-BORDUR":123,"C-WATR-APPT":5,"C-WATR-APPT-PATT":7,"C-WATR-CNTR":5,"C-WATR-FITT":5,"C-WATR-FITT-PATT":7,"C-WATR-PIPE":5,"C-WATR-PIPE-PATT":7,"C-WATR-PROF":5,"C-WATR-SCTN":5,"C-WATR-TEXT":7}};
+const SAMPLE={"name":"","text":""};
+/* ===== Cœur : lecture, analyse des strings, géométrie, DXF, ZIP ===== */
+const CTRL_LABEL={1:'Début de ligne',2:'Fermer la forme',3:'Début de courbe',4:'Fin de courbe',5:'Point de courbe',6:'Cercle',7:'Continuer la ligne'};
+
+function buildCodes(dict){
+  const m=new Map();
+  for(const c of dict.codes) m.set(String(c[0]),{code:String(c[0]),abr:c[1],desc:c[2],cat:c[3],layer:c[4],src:c[5]==='g'?'gabarit':(c[5]==='d'?'déduit':'catégorie')});
+  return m;
+}
+
+function splitLine(line,delim){
+  if(delim===' ') return line.trim().split(/\s+/);
+  return line.split(delim);
+}
+
+/* Lecture du fichier : conserve les lignes brutes pour réécrire le _modif à l'identique */
+function parseFile(text){
+  const eol=text.includes('\r\n')?'\r\n':'\n';
+  const endsWithEol=/\r?\n$/.test(text);
+  const lines=text.split(/\r?\n/);
+  if(endsWithEol) lines.pop();
+  const first=lines.find(l=>l.trim())||'';
+  const delim=first.includes(',')?',':(first.includes(';')?';':(first.includes('\t')?'\t':' '));
+  let header=null,hmap=null;
+  const f0=splitLine(first,delim);
+  if(f0.length>1 && isNaN(parseFloat(f0[1])) ){
+    header=first; hmap={};
+    f0.forEach((h,i)=>{const k=h.trim().toLowerCase();
+      if(/^(name|nom|point|matricule|pt|id)/.test(k)&&hmap.name==null) hmap.name=i;
+      else if(/^(easting|est|x)$/.test(k)) hmap.e=i;
+      else if(/^(northing|nord|y)$/.test(k)) hmap.n=i;
+      else if(/^(elevation|élévation|elev|z|alt)/.test(k)) hmap.z=i;
+      else if(/^description$/.test(k)) hmap.d=i;});
+    hmap.len=f0.length;
+  }
+  const rows=[];
+  lines.forEach((raw,li)=>{
+    if(raw===header&&li===lines.indexOf(header)) return;
+    if(!raw.trim()) return;
+    const f=splitLine(raw,delim);
+    let cols;
+    if(hmap&&f.length>=hmap.len&&hmap.e!=null&&hmap.d!=null) cols={name:hmap.name??0,e:hmap.e,n:hmap.n,z:hmap.z,d:hmap.d};
+    else if(f.length>=7 && isNaN(parseFloat(f[1]))) cols={name:0,e:3,n:4,z:5,d:6};
+    else cols={name:0,e:1,n:2,z:3,d:4};
+    const e=parseFloat(f[cols.e]),n=parseFloat(f[cols.n]),z=parseFloat(f[cols.z]);
+    const desc=delim===' '?f.slice(cols.d).join(' '):f.slice(cols.d).join(delim);
+    const xyz=[f[cols.e],f[cols.n],f[cols.z]];
+    rows.push({i:rows.length,li,raw,fields:f,cols,name:(f[cols.name]||'').trim(),e,n,z:isFinite(z)?z:0,xyz,oxyz:xyz.slice(),desc:desc??'',orig:desc??'',bad:!(isFinite(e)&&isFinite(n))});
+  });
+  return {eol,endsWithEol,lines,delim,header,rows};
+}
+
+function parseDesc(desc){
+  const t=(desc||'').trim();
+  const tk=t?t.split(/\s+/):[];
+  const r={pcode:null,str:null,ctrl:null,attrs:[],err:null,spaces:(desc||'')!==t||/\s{2,}/.test(t)};
+  if(!tk.length){r.err='Description vide';return r}
+  if(!/^\d{1,4}$/.test(tk[0])){r.err='Pcode non numérique';r.attrs=tk;return r}
+  r.pcode=tk[0];
+  let k=1;
+  if(tk[1]!=null){
+    const m=/^(\d+)(?:\.(\d*))?$/.exec(tk[1]);
+    if(m){r.str=m[1];r.ctrl=m[2]===undefined?null:m[2];k=2;}
+  }
+  r.attrs=tk.slice(k);
+  return r;
+}
+function formatDesc(p){
+  const parts=[p.pcode];
+  if(p.str!=null&&p.str!=='') parts.push(p.str+(p.ctrl?'.'+p.ctrl:''));
+  return parts.concat(p.attrs||[]).filter(x=>x!=null&&x!=='').join(' ');
+}
+
+/* Géométrie */
+function circle3(a,b,c){
+  const d=2*(a[0]*(b[1]-c[1])+b[0]*(c[1]-a[1])+c[0]*(a[1]-b[1]));
+  if(Math.abs(d)<1e-9) return null;
+  const a2=a[0]*a[0]+a[1]*a[1],b2=b[0]*b[0]+b[1]*b[1],c2=c[0]*c[0]+c[1]*c[1];
+  const x=(a2*(b[1]-c[1])+b2*(c[1]-a[1])+c2*(a[1]-b[1]))/d;
+  const y=(a2*(c[0]-b[0])+b2*(a[0]-c[0])+c2*(b[0]-a[0]))/d;
+  return {x,y,r:Math.hypot(a[0]-x,a[1]-y)};
+}
+function arc3pts(a,b,c,step){
+  const C=circle3(a,b,c); if(!C) return [a,b,c];
+  const ang=p=>Math.atan2(p[1]-C.y,p[0]-C.x);
+  let t0=ang(a),t1=ang(b),t2=ang(c);
+  const norm=v=>{while(v<0)v+=2*Math.PI;while(v>=2*Math.PI)v-=2*Math.PI;return v};
+  const ccw=norm(t1-t0)<norm(t2-t0);
+  let sweep=ccw?norm(t2-t0):-norm(t0-t2);
+  const sb=ccw?norm(t1-t0):-norm(t0-t1);
+  const n=Math.max(4,Math.ceil(Math.abs(sweep)*C.r/step));
+  const out=[];
+  for(let i=0;i<=n;i++){const t=t0+sweep*i/n;const f=i/n;
+    const z=Math.abs(sweep*f)<=Math.abs(sb)? a[2]+(b[2]-a[2])*(sweep*f/sb||0) : b[2]+(c[2]-b[2])*((sweep*f-sb)/(sweep-sb)||0);
+    out.push([C.x+C.r*Math.cos(t),C.y+C.r*Math.sin(t),z]);}
+  out[0]=a.slice();out[out.length-1]=c.slice();
+  return out;
+}
+function catmull(P,step){ // centripète, passe par chaque point
+  const out=[P[0].slice()];
+  for(let i=0;i<P.length-1;i++){
+    const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||P[i+1];
+    const tj=(a,b)=>Math.pow(Math.hypot(b[0]-a[0],b[1]-a[1])||1e-6,0.5);
+    const t0=0,t1=t0+tj(p0,p1),t2=t1+tj(p1,p2),t3=t2+tj(p2,p3);
+    const L=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]);
+    const n=Math.max(2,Math.ceil(L/step));
+    for(let s=1;s<=n;s++){
+      const t=t1+(t2-t1)*s/n;
+      const lerp=(pa,pb,ta,tb)=>{const w=(tb-ta)||1e-9;return [0,1].map(k=>((tb-t)*pa[k]+(t-ta)*pb[k])/w)};
+      const A1=lerp(p0,p1,t0,t1),A2=lerp(p1,p2,t1,t2),A3=lerp(p2,p3,t2,t3);
+      const B1=lerp(A1,A2,t0,t2),B2=lerp(A2,A3,t1,t3);
+      const C=lerp(B1,B2,t1,t2);
+      out.push([C[0],C[1],p1[2]+(p2[2]-p1[2])*s/n]);
+    }
+  }
+  return out;
+}
+function segInter(a,b,c,d){
+  const o=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+  const d1=o(c,d,a),d2=o(c,d,b),d3=o(a,b,c),d4=o(a,b,d);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+
+/* Analyse topologique selon la méthode string Leica CS20 */
+function analyze(rows,codes,opt){
+  const issues=[],lines=[];
+  const open=new Map(),prevLine=new Map();
+  const add=(sev,row,msg,kind,extra)=>issues.push(Object.assign({sev,row,msg,kind},extra||{}));
+  let lid=0;
+  const finalize=(L)=>{
+    if(!L) return;
+    open.delete(L.key);
+    if(L.type==='circle'){
+      if(L.pts.length<2||L.pts.length>3) add('err',L.pts[0],`Cercle ${L.key.replace('|',' / string ')} avec ${L.pts.length} point(s) : il en faut 2 ou 3.`,'circle');
+      else lines.push(L);
+      return;
+    }
+    if(L.curve!=null){L.curves.push([L.curve,L.pts.length-1]);add('warn',L.pts[L.curve],'Courbe débutée (.3) sans fin de courbe (.4) : elle se termine au dernier point de la ligne.','curveOpen',{last:L.pts[L.pts.length-1]});L.curve=null;}
+    if(L.pts.length<2){add('err',L.pts[0],`Ligne d'un seul point : le string ${L.str} du code ${L.pcode} débute ici mais ne continue jamais.`,'single',{line:L});}
+    else if(L.closed&&L.pts.length<3){add('err',L.pts[L.pts.length-1],'Fermeture (.2) d\'une ligne de moins de 3 points.','closeShort');}
+    if(L.pts.length>=2) lines.push(L);
+    prevLine.set(L.key,L);
+  };
+  const names=new Map();
+  for(const r of rows){
+    if(r.bad){add('err',r.i,'Coordonnées illisibles sur cette ligne du fichier.','coords');continue}
+    if(names.has(r.name)) add('warn',r.i,`Matricule en double (déjà utilisé au point ${rows[names.get(r.name)].name}).`,'dupName'); else names.set(r.name,r.i);
+    const p=r.p=parseDesc(r.desc);
+    if(p.err){add('err',r.i,p.err+'.','fmt');continue}
+    if(p.spaces) add('info',r.i,'Espaces superflus dans la description.','spaces');
+    if(!codes.has(p.pcode)) add('err',r.i,`Code ${p.pcode} absent de la liste ArpentNord.`,'unknown');
+    if(p.str==null) continue;
+    const key=p.pcode+'|'+p.str;
+    let c=p.ctrl===null||p.ctrl===''?0:+p.ctrl;
+    if(p.ctrl!==null&&p.ctrl!==''&&!(/^[1-7]$/.test(p.ctrl))){add('err',r.i,`Code de contrôle .${p.ctrl} inconnu (valeurs permises : .1 à .7).`,'badCtrl');c=0;}
+    let L=open.get(key);
+    const mk=(type)=>{const N={id:lid++,key,pcode:p.pcode,str:p.str,pts:[],curves:[],curve:null,closed:false,type};open.set(key,N);return N};
+    if(c===6){
+      if(!L||L.type!=='circle'){finalize(L);L=mk('circle');}
+      L.pts.push(r.i); if(L.pts.length===3) finalize(L);
+      continue;
+    }
+    if(L&&L.type==='circle'){finalize(L);L=null;}
+    if(c===1){finalize(L);L=mk('line');L.pts.push(r.i);continue}
+    if(c===3){ if(!L){L=mk('line');} L.pts.push(r.i); if(L.curve!=null){L.curves.push([L.curve,L.pts.length-1]);} L.curve=L.pts.length-1; continue}
+    if(!L){
+      add('err',r.i,c===2?'Fermeture (.2) sans ligne ouverte pour ce string.':`Continuation du string ${p.str} (code ${p.pcode}) sans début de ligne (.1).`,'orphan',{ctrl:c});
+      continue;
+    }
+    L.pts.push(r.i);
+    if(c===4){ if(L.curve==null) add('warn',r.i,'Fin de courbe (.4) sans début de courbe (.3).','endNoCurve'); else {L.curves.push([L.curve,L.pts.length-1]);L.curve=null;} }
+    if(c===5&&L.curve==null) add('warn',r.i,'Point de courbe (.5) hors d\'une courbe : traité comme point de ligne.','midNoCurve');
+    if(c===2){L.closed=true;finalize(L);}
+  }
+  for(const L of [...open.values()]) finalize(L);
+
+  /* contrôles géométriques */
+  const P=i=>[rows[i].e,rows[i].n,rows[i].z];
+  for(const L of lines){
+    if(L.type==='circle') continue;
+    const seq=L.pts.map(P);
+    if(L.closed) seq.push(seq[0]);
+    for(let k=1;k<seq.length;k++){
+      const d=Math.hypot(seq[k][0]-seq[k-1][0],seq[k][1]-seq[k-1][1]);
+      const ri=L.pts[k%L.pts.length];
+      if(d<opt.dup) add('warn',ri,`Point confondu avec le précédent de la ligne (${(d*1000).toFixed(0)} mm).`,'dup');
+      else if(d>opt.maxSeg) add('warn',ri,`Segment de ${d.toFixed(1)} m depuis le point ${rows[L.pts[k-1]].name} : string ou code possiblement erroné.`,'long');
+    }
+    for(let a=0;a<seq.length-1;a++) for(let b=a+2;b<seq.length-1;b++){
+      if(L.closed&&a===0&&b===seq.length-2) continue;
+      if(segInter(seq[a],seq[a+1],seq[b],seq[b+1])){
+        // 2-opt : inverser l'ordre des points a+1..b décroise ; si ce sont deux points, on propose l'échange
+        const pa=L.pts[(a+1)%L.pts.length],pb=L.pts[b%L.pts.length];
+        const ex=b-(a+1)===1?{swap:[pa,pb]}:{};
+        add('warn',pa,`La ligne ${L.pcode} / string ${L.str} se croise entre ${rows[L.pts[a]].name}–${rows[pa].name} et ${rows[pb].name}–${rows[L.pts[(b+1)%L.pts.length]].name} : points levés dans le mauvais ordre ?`,'cross',ex);b=seq.length;a=seq.length;}
+    }
+  }
+  /* lignes ouvertes de 3 points à angle quasi droit : rectangle à compléter ? */
+  for(const L of lines){
+    if(L.type!=='line'||L.closed||L.pts.length!==3||L.curves.length) continue;
+    const q=rectFourth(rows[L.pts[0]],rows[L.pts[1]],rows[L.pts[2]]);
+    if(Math.abs(q.ang-90)<=12) add('info',L.pts[2],`Ligne ouverte de 3 points (${q.ang.toFixed(1)}° au point ${rows[L.pts[1]].name}) : rectangle à compléter ?`,'rect',{rect:L.pts.slice(),ang:q.ang});
+  }
+  /* sauts de numérotation */
+  const nums=rows.map(r=>/^\d+$/.test(r.name)?+r.name:null);
+  for(let k=1;k<rows.length;k++){
+    if(nums[k]!=null&&nums[k-1]!=null&&nums[k]-nums[k-1]>1&&nums[k]-nums[k-1]<1000){
+      const miss=nums[k]-nums[k-1]-1;
+      add('info',rows[k].i,miss===1?`Matricule ${nums[k-1]+1} absent de la séquence.`:`${miss} matricules absents (${nums[k-1]+1} à ${nums[k]-1}).`,'gap');
+    }
+  }
+  const rank={err:0,warn:1,info:2};
+  issues.sort((a,b)=>rank[a.sev]-rank[b.sev]||(a.kind==='rect')-(b.kind==='rect')||a.row-b.row);
+  return {issues,lines};
+}
+
+function lineVerts(L,rows,step){
+  const P=i=>[rows[i].e,rows[i].n,rows[i].z];
+  if(L.type==='circle'){
+    const p=L.pts.map(P);let C;
+    if(p.length===2) C={x:(p[0][0]+p[1][0])/2,y:(p[0][1]+p[1][1])/2,r:Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1])/2};
+    else C=circle3(p[0],p[1],p[2]);
+    if(!C) return {circle:null,verts:p};
+    const z=p.reduce((s,q)=>s+q[2],0)/p.length;
+    const v=[];for(let i=0;i<=72;i++){const t=i/72*2*Math.PI;v.push([C.x+C.r*Math.cos(t),C.y+C.r*Math.sin(t),z]);}
+    return {circle:{x:C.x,y:C.y,z,r:C.r},verts:v};
+  }
+  const pts=L.pts.map(P);
+  const cmap=new Map(L.curves.filter(c=>c[1]-c[0]>=2).map(c=>[c[0],c[1]]));
+  const v=[pts[0].slice()];
+  for(let i=0;i<pts.length-1;){
+    if(cmap.has(i)){
+      const j=cmap.get(i);const sub=pts.slice(i,j+1);
+      const cv=sub.length===3?arc3pts(sub[0],sub[1],sub[2],step):catmull(sub,step);
+      for(let k=1;k<cv.length;k++) v.push(cv[k]);
+      i=j;
+    } else {v.push(pts[i+1].slice());i++;}
+  }
+  if(L.closed) v.push(pts[0].slice());
+  return {verts:v};
+}
+
+/* DXF R12 ASCII */
+function buildDXF(rows,lines,layerOf,colorOf,o){
+  const out=[];const g=(c,v)=>{out.push(String(c));out.push(String(v))};
+  const f=x=>(Math.round(x*10000)/10000).toFixed(4);
+  const Z=z=>o.threeD?f(z):'0.0';
+  const used=new Set(['C-GEO-POINT-NUMERO','C-GEO-POINT-ELEV','C-GEO-POINT-CODE'].map(o.pref));
+  const ents=[];
+  const E=(...a)=>ents.push(a);
+  let xmin=1e99,ymin=1e99,xmax=-1e99,ymax=-1e99;
+  for(const r of rows){ if(r.bad) continue; xmin=Math.min(xmin,r.e);ymin=Math.min(ymin,r.n);xmax=Math.max(xmax,r.e);ymax=Math.max(ymax,r.n);
+    const lay=r.p&&r.p.pcode?layerOf(r.p.pcode):o.pref('C-GEO-POINT-LEVE'); used.add(lay);
+    E(0,'POINT',8,lay,10,f(r.e),20,f(r.n),30,Z(r.z));
+    const h=o.h;
+    if(o.num) E(0,'TEXT',8,o.pref('C-GEO-POINT-NUMERO'),10,f(r.e+h*.5),20,f(r.n+h*.4),30,'0.0',40,f(h),1,r.name);
+    if(o.elev) E(0,'TEXT',8,o.pref('C-GEO-POINT-ELEV'),10,f(r.e+h*.5),20,f(r.n-h*1.0),30,'0.0',40,f(h),1,r.z.toFixed(2));
+    if(o.code) E(0,'TEXT',8,o.pref('C-GEO-POINT-CODE'),10,f(r.e+h*.5),20,f(r.n-h*2.4),30,'0.0',40,f(h*.8),1,r.desc.trim());
+  }
+  for(const L of lines){
+    const lay=layerOf(L.pcode);used.add(lay);
+    const g2=lineVerts(L,rows,o.step);
+    if(g2.circle){E(0,'CIRCLE',8,lay,10,f(g2.circle.x),20,f(g2.circle.y),30,Z(g2.circle.z),40,f(g2.circle.r));continue}
+    let v=g2.verts;let closed=false;
+    if(L.closed){v=v.slice(0,-1);closed=true;}
+    E(0,'POLYLINE',8,lay,66,1,10,'0.0',20,'0.0',30,'0.0',70,(o.threeD?8:0)|(closed?1:0));
+    for(const p of v) E(0,'VERTEX',8,lay,10,f(p[0]),20,f(p[1]),30,Z(p[2]),70,o.threeD?32:0);
+    E(0,'SEQEND',8,lay);
+  }
+  if(xmin>xmax){xmin=ymin=0;xmax=ymax=1}
+  g(0,'SECTION');g(2,'HEADER');
+  g(9,'$ACADVER');g(1,'AC1009');g(9,'$DWGCODEPAGE');g(3,'ANSI_1252');
+  g(9,'$INSBASE');g(10,'0.0');g(20,'0.0');g(30,'0.0');
+  g(9,'$EXTMIN');g(10,f(xmin));g(20,f(ymin));g(30,'0.0');
+  g(9,'$EXTMAX');g(10,f(xmax));g(20,f(ymax));g(30,'0.0');
+  g(9,'$PDMODE');g(70,3);g(9,'$PDSIZE');g(40,f(o.h*.6));
+  g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'TABLES');
+  g(0,'TABLE');g(2,'LTYPE');g(70,1);g(0,'LTYPE');g(2,'CONTINUOUS');g(70,0);g(3,'Solid line');g(72,65);g(73,0);g(40,'0.0');g(0,'ENDTAB');
+  const L2=[...used].sort();
+  g(0,'TABLE');g(2,'LAYER');g(70,L2.length+1);
+  g(0,'LAYER');g(2,'0');g(70,0);g(62,7);g(6,'CONTINUOUS');
+  for(const n of L2){g(0,'LAYER');g(2,n);g(70,0);g(62,colorOf(n));g(6,'CONTINUOUS');}
+  g(0,'ENDTAB');
+  g(0,'TABLE');g(2,'STYLE');g(70,1);g(0,'STYLE');g(2,'STANDARD');g(70,0);g(40,'0.0');g(41,'1.0');g(50,'0.0');g(71,0);g(42,f(o.h));g(3,'txt');g(4,'');g(0,'ENDTAB');
+  g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'ENTITIES');
+  for(const a of ents) for(let k=0;k<a.length;k+=2) g(a[k],a[k+1]);
+  g(0,'ENDSEC');g(0,'EOF');
+  return out.join('\r\n')+'\r\n';
+}
+function toCp1252(s){
+  const b=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);b[i]=c<256?c:63;}
+  return b;
+}
+/* ZIP (méthode « stored ») */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC_T[(c^u8[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder();const parts=[];const cd=[];let off=0;
+  const d=new Date();const dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();const tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  for(const fl of files){
+    const name=enc.encode(fl.name);const data=fl.data;const crc=crc32(data);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,tm,true);h.setUint16(12,dt,true);
+    h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),name,data);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);c.setUint16(12,tm,true);c.setUint16(14,dt,true);
+    c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),name);
+    off+=30+name.length+data.length;
+  }
+  const cdSize=cd.reduce((s,a)=>s+a.length,0);
+  const e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cdSize,true);e.setUint32(16,off,true);
+  const all=[...parts,...cd,new Uint8Array(e.buffer)];
+  const total=all.reduce((s,a)=>s+a.length,0);const u=new Uint8Array(total);let p=0;for(const a of all){u.set(a,p);p+=a.length;}
+  return u;
+}
+function isModified(r){return r.desc!==r.orig||r.xyz[0]!==r.oxyz[0]||r.xyz[1]!==r.oxyz[1]||r.xyz[2]!==r.oxyz[2]}
+/* Inverse deux matricules : chaque point physique prend le numéro (et la place dans la séquence) de l'autre */
+function swapPoints(A,B,withDesc){
+  for(const k of ['e','n','z','xyz','bad']){const t=A[k];A[k]=B[k];B[k]=t;}
+  if(withDesc){const t=A.desc;A.desc=B.desc;B.desc=t;}
+}
+function rowLine(r,delim){const f=r.fields.slice(0,r.cols.d);f[r.cols.name]=r.name;f[r.cols.e]=r.xyz[0];f[r.cols.n]=r.xyz[1];f[r.cols.z]=r.xyz[2];f.push(r.desc);return f.join(delim)}
+function buildModifText(F,rows){
+  const mod=new Map(rows.filter(r=>!r.added&&isModified(r)).map(r=>[r.li,r]));
+  const adds=new Map();for(const r of rows) if(r.added){if(!adds.has(r.li))adds.set(r.li,[]);adds.get(r.li).push(r)}
+  const out=[];
+  F.lines.forEach((raw,li)=>{const r=mod.get(li);out.push(r?rowLine(r,F.delim):raw);for(const a of adds.get(li)||[])out.push(rowLine(a,F.delim))});
+  return out.join(F.eol)+(F.endsWithEol?F.eol:'');
+}
+/* Nouveau point (calculé) inséré dans le fichier juste après « anchor », même format de nombres */
+function makeRow(anchor,name,e,n,z,desc){
+  const dec=s=>{const m=/\.(\d+)/.exec(s||'');return m?m[1].length:3};
+  const xyz=[e.toFixed(dec(anchor.xyz[0])),n.toFixed(dec(anchor.xyz[1])),z.toFixed(dec(anchor.xyz[2]))];
+  return {i:-1,li:anchor.li,added:true,raw:'',fields:anchor.fields.slice(),cols:anchor.cols,name,e:+xyz[0],n:+xyz[1],z:+xyz[2],xyz,oxyz:xyz.slice(),desc,orig:'',bad:false};
+}
+/* 4e coin d'un rectangle : A et C adjacents au coin B */
+function rectFourth(A,B,C){
+  const ang=Math.abs(Math.atan2((A.e-B.e)*(C.n-B.n)-(A.n-B.n)*(C.e-B.e),(A.e-B.e)*(C.e-B.e)+(A.n-B.n)*(C.n-B.n)))*180/Math.PI;
+  return {e:A.e+C.e-B.e,n:A.n+C.n-B.n,z:A.z+C.z-B.z,ang,ab:Math.hypot(A.e-B.e,A.n-B.n),bc:Math.hypot(C.e-B.e,C.n-B.n)};
+}
+if(typeof module!=='undefined'&&module.exports) module.exports={parseFile,parseDesc,formatDesc,analyze,lineVerts,buildDXF,buildCodes,makeZip,toCp1252,buildModifText,crc32,swapPoints,isModified,makeRow,rectFourth};
+
+/* ===== Interface ===== */
+const CODES=buildCodes(DICT);
+const $=id=>document.getElementById(id);
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let layerOv=LS.get('vl.layers',{});
+const S={F:null,fileName:'',rows:[],lines:[],issues:[],hist:[],sel:null,cur:-1,view:null,showNum:true,showCode:false,showElev:false,journal:[]};
+const opt=()=>({maxSeg:+$('oMaxSeg').value||40,dup:+$('oDup').value||0.005});
+
+function aci(i){
+  const fx={1:'#ff0000',2:'#ffff00',3:'#00ff00',4:'#00ffff',5:'#0000ff',6:'#ff00ff',7:'#ffffff',8:'#808080',9:'#c0c0c0'};
+  if(fx[i]) return fx[i];
+  if(i>=250&&i<=255){const g=[51,91,132,173,214,255][i-250];return `rgb(${g},${g},${g})`}
+  if(!(i>=10&&i<250)) return '#ffffff';
+  const h=Math.floor((i-10)/10)*15,k=(i-10)%10,v=[1,1,.8,.8,.6,.6,.5,.5,.3,.3][k],s=k%2?.5:1;
+  const f=n=>{const kk=(n+h/60)%6;return Math.round(255*(v-v*s*Math.max(0,Math.min(kk,4-kk,1))))};
+  return `rgb(${f(5)},${f(3)},${f(1)})`;
+}
+const pref=n=>($('oPrefix').value==='E'&&n.startsWith('C-'))?'E-'+n.slice(2):n;
+function layerOf(pc){const c=CODES.get(String(pc));return pref(layerOv[pc]||(c?c.layer:'C-TOP-DIVERS'))}
+function colorIdx(n){const k='C-'+n.slice(2);return DICT.layers[n]??DICT.layers[k]??7}
+const colOfCode=pc=>aci(colorIdx(layerOf(pc)));
+
+/* ---------- Chargement ---------- */
+function load(text,name){
+  const F=parseFile(text);
+  const ok=F.rows.filter(r=>!r.bad).length;
+  if(!ok){toast(`${name} ne ressemble pas à un levé : attendu Matricule,Est,Nord,Élév,Description.`);return false}
+  S.F=F;S.rows=F.rows;S.fileName=name;S.enc=S.nextEnc||'windows-1252';S.nextEnc=null;S.hist=[];S.sel=null;S.cur=-1;S.journal=[];
+  $('fname').textContent=name+' · '+F.rows.length+' points';
+  $('nameList').innerHTML=F.rows.map(r=>`<option value="${esc(r.name)}">`).join('');
+  run();fit();
+  ['bTxt','bDxf','bJournal','bMail'].forEach(id=>$(id).disabled=false);
+  toast(`${name} chargé : ${F.rows.length} points.`);
+  return true;
+}
+function decodeBytes(buf){const u8=new Uint8Array(buf);S.nextEnc='windows-1252';if(u8.length>=3&&u8[0]===0xEF&&u8[1]===0xBB&&u8[2]===0xBF)S.nextEnc='utf-8';else if(!u8.some(c=>c>127))S.nextEnc='windows-1252';else{try{new TextDecoder('utf-8',{fatal:true}).decode(u8);S.nextEnc='utf-8'}catch(e){}}
+  if(u8[0]===0xFF&&u8[1]===0xFE) return new TextDecoder('utf-16le').decode(u8);
+  if(u8[0]===0xFE&&u8[1]===0xFF) return new TextDecoder('utf-16be').decode(u8);
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(u8)}catch(e){try{return new TextDecoder('windows-1252').decode(u8)}catch(e2){let s='';for(const c of u8)s+=String.fromCharCode(c);return s}}}
+function readBuf(file){
+  if(file.arrayBuffer) return file.arrayBuffer().catch(()=>readBufFR(file));
+  return readBufFR(file);
+}
+function readBufFR(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>rej(fr.error||new Error('lecture refusée'));fr.readAsArrayBuffer(file)})}
+function readFile(file){
+  return readBuf(file).then(buf=>{
+    if(!buf||!buf.byteLength){toast(`${file.name||'Le fichier'} est vide ou n'a pas été transmis par le téléphone (fichier iCloud non téléchargé ?).`);return}
+    let n=(file.name||'').split(/[\\/]/).pop()||'leve.txt';if(!/\.[a-z0-9]{2,4}$/i.test(n))n+='.txt';
+    try{load(decodeBytes(buf),n)}catch(err){toast('Erreur à l\'analyse : '+(err&&err.message||err));console.error(err)}
+  }).catch(err=>{toast('Lecture du fichier impossible ('+(err&&err.name||'erreur')+'). Essayez « Coller ».');console.error(err)});
+}
+/* Collage : pour les fichiers que le sélecteur du téléphone ne voit pas (pièces jointes Outlook…) */
+$('bPaste').onclick=()=>{$('pasteSheet').hidden=false;$('pasteText').focus()};
+$('pasteCancel').onclick=()=>{$('pasteSheet').hidden=true};
+$('pasteGo').onclick=()=>{const t=$('pasteText').value;if(!t.trim()){toast('Collez le contenu du levé.');return}
+  let n=$('pasteName').value.trim()||'leve_colle.txt';if(!/\.[a-z0-9]+$/i.test(n))n+='.txt';
+  if(load(t.replace(/\r?\n/g,'\r\n'),n)){$('pasteSheet').hidden=true;$('pasteText').value='';}};
+document.addEventListener('paste',e=>{
+  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||''))return;
+  const f=e.clipboardData?.files?.[0];if(f){e.preventDefault();readFile(f);return}
+  const t=e.clipboardData?.getData('text');if(t&&/\d+[,;\t ]+\d+\.\d+/.test(t)){e.preventDefault();load(t.replace(/\r?\n/g,'\r\n'),'leve_colle.txt')}});
+function onPick(e){const inp=e.target;const f=inp.files&&inp.files[0];
+  if(!f){toast('Aucun fichier reçu du sélecteur. Réessayez ou utilisez « Coller ».');return}
+  if(inp._last===f)return;inp._last=f;
+  toast(`Lecture de ${f.name||'fichier'}…`);
+  readFile(f).finally(()=>{setTimeout(()=>{try{inp.value='';}catch(_){}inp._last=null},0)});}
+$('fileIn').addEventListener('change',onPick);$('fileIn').addEventListener('input',onPick);
+/* Si le sélecteur se ferme sans transmettre de fichier (cas de l'app Claude sur iPhone), proposer les solutions de rechange */
+let pickT=0;
+$('fileIn').addEventListener('click',()=>{pickT=Date.now();$('fileIn')._got=false});
+$('fileIn').addEventListener('change',()=>{$('fileIn')._got=true});
+function pickCheck(){if(!pickT||document.hidden)return;const t0=pickT;setTimeout(()=>{if(pickT!==t0||$('fileIn')._got)return;pickT=0;if(Date.now()-t0>1500)$('pickHelp').hidden=false},1200)}
+window.addEventListener('focus',pickCheck);document.addEventListener('visibilitychange',pickCheck);
+$('pickHelpClose').onclick=()=>{$('pickHelp').hidden=true};
+$('pickHelpPaste').onclick=()=>{$('pickHelp').hidden=true;$('bPaste').click()};
+if($('pickHelpCopy'))$('pickHelpCopy').onclick=()=>{const url='https://claude.ai/artifact/L8sDD3BhLnzT1JJp2DiBw7';
+  navigator.clipboard?.writeText(url).then(()=>toast('Lien copié : collez-le dans Safari.'),()=>{$('pickHelpUrl').select();toast('Sélectionnez et copiez le lien.')})};
+const pw=$('planwrap');
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();$('drop').hidden=false}));
+['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||e.target===$('drop'))$('drop').hidden=true}));
+document.addEventListener('drop',e=>{const f=e.dataTransfer?.files?.[0];if(f)readFile(f)});
+
+/* ---------- Analyse ---------- */
+function run(){
+  const A=analyze(S.rows,CODES,opt());
+  S.lines=A.lines;S.issues=A.issues;
+  S.lineOf=new Map();for(const L of S.lines)for(const i of L.pts)S.lineOf.set(i,L);
+  S.verts=S.lines.map(L=>lineVerts(L,S.rows,Math.max(.05,+$('oStep').value||.25)).verts);
+  S.sevOf=new Map();for(const is of S.issues){const p=S.sevOf.get(is.row);if(!p||p==='info'||(p==='warn'&&is.sev==='err'))S.sevOf.set(is.row,is.sev);}
+  $('nameList').innerHTML=S.rows.map(r=>`<option value="${esc(r.name)}">`).join('');
+  renderSummary();renderIssues();renderInsp();renderPts();renderCodes();draw();
+  $('bUndo').disabled=!S.hist.length;
+}
+function setDesc(i,d,why){
+  const r=S.rows[i];if(r.desc===d) return;
+  S.hist.push({type:'desc',r,before:r.desc});
+  S.journal.push({name:r.name,before:r.desc,after:d,why:why||'Édition manuelle',t:new Date().toLocaleString('fr-CA')});
+  r.desc=d;run();
+}
+function patch(i,fn,why){const p=parseDesc(S.rows[i].desc);fn(p);setDesc(i,formatDesc(p),why)}
+function undo(){const h=S.hist.pop();if(!h)return;
+  if(h.type==='add'){const k=S.rows.indexOf(h.r);if(k>=0)S.rows.splice(k,1);if(h.cPrev!=null)h.C.desc=h.cPrev;reindex();if(S.sel!=null&&!S.rows[S.sel])S.sel=null;S.journal.push({name:h.r.name,before:'',after:'',why:'Point calculé retiré',t:new Date().toLocaleString('fr-CA')});}
+  else if(h.type==='swap'){const A=h.A,B=h.B;swapPoints(A,B,h.withDesc);A.swapNote=h.notes[0];B.swapNote=h.notes[1];S.journal.push({name:A.name+' ↔ '+B.name,before:'',after:'',why:'Annulation de l\'inversion',t:new Date().toLocaleString('fr-CA')});}
+  else{h.r.desc=h.before;S.journal.push({name:h.r.name,before:'',after:h.before,why:'Annulation',t:new Date().toLocaleString('fr-CA')});}
+  run();toast('Modification annulée.')}
+/* Inversion de deux matricules */
+function doSwap(a,b,withDesc){
+  if(a===b||a==null||b==null)return;
+  const A=S.rows[a],B=S.rows[b];
+  S.hist.push({type:'swap',A,B,withDesc,notes:[A.swapNote,B.swapNote]});
+  swapPoints(A,B,withDesc);
+  const back=x=>x.xyz.join()===x.oxyz.join();
+  A.swapNote=back(A)?'':`↔ coord. de ${B.name}`;B.swapNote=back(B)?'':`↔ coord. de ${A.name}`;
+  S.journal.push({name:A.name+' ↔ '+B.name,before:`${A.name}: ${B.xyz.join(' ')}`,after:`${A.name}: ${A.xyz.join(' ')}`,why:'Inversion de numérotation'+(withDesc?' (descriptions incluses)':''),t:new Date().toLocaleString('fr-CA')});
+  S.swapPick=null;run();
+  toast(`Points ${A.name} et ${B.name} inversés.`);
+}
+function reindex(){S.rows.forEach((r,k)=>r.i=k)}
+function nextName(){let m=-1,w=0;for(const r of S.rows)if(/^\d+$/.test(r.name)){const v=+r.name;if(v>m){m=v;w=r.name.length}}return m>=0?String(m+1).padStart(w,'0'):''}
+/* Rectangle par 3 points : A–B–C consécutifs sur la même ligne, B = coin ; D = A + C − B inséré après C avec .2 */
+function rectCheck(a,b,c){
+  if([a,b,c].some(x=>x==null||x<0)) return {err:'Indiquez les trois matricules.'};
+  const L=S.lineOf.get(b);
+  if(!L||L.type!=='line'||S.lineOf.get(a)!==L||S.lineOf.get(c)!==L) return {err:'Les 3 points doivent faire partie de la même ligne (même code et string).'};
+  let ia=L.pts.indexOf(a),ib=L.pts.indexOf(b),ic=L.pts.indexOf(c);
+  if(ia>ic){[a,c]=[c,a];[ia,ic]=[ic,ia]}
+  if(ib!==ia+1||ic!==ib+1) return {err:'Les points doivent se suivre sur la ligne, avec le coin au milieu.'};
+  if(ic!==L.pts.length-1) return {err:`La ligne continue après ${S.rows[c].name} : le rectangle ne peut être fermé qu'au dernier point.`};
+  if(L.pts.length!==3) return {err:'La ligne doit compter exactement 3 points.'};
+  return {a,b,c,L,q:rectFourth(S.rows[a],S.rows[b],S.rows[c])};
+}
+function buildRect(a,b,c,name){
+  const k=rectCheck(a,b,c);if(k.err){toast(k.err);return false}
+  name=(name||'').trim()||nextName();
+  if(S.rows.some(r=>r.name===name)){toast(`Le matricule ${name} existe déjà.`);return false}
+  const A=S.rows[k.a],B=S.rows[k.b],C=S.rows[k.c];const pc=parseDesc(C.desc);
+  const cPrev=pc.ctrl==='2'?C.desc:null;
+  if(cPrev!=null){pc.ctrl=null;C.desc=formatDesc(pc);}
+  const D=makeRow(C,name,k.q.e,k.q.n,k.q.z,formatDesc({pcode:pc.pcode,str:pc.str,ctrl:'2',attrs:['CALCUL']}));
+  S.rows.splice(S.rows.indexOf(C)+1,0,D);reindex();
+  S.hist.push({type:'add',r:D,C,cPrev});
+  S.journal.push({name,before:'',after:`${D.xyz.join(' ')} ${D.desc}`,why:`Point calculé : rectangle ${A.name}-${B.name}-${C.name} (angle ${k.q.ang.toFixed(1)}°)`,t:new Date().toLocaleString('fr-CA')});
+  S.rectPrev=null;run();select(D.i,false);
+  toast(`Point ${name} ajouté : rectangle fermé.`);return true;
+}
+$('bUndo').onclick=undo;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.swapPick!=null){S.swapPick=null;renderInsp();draw();return}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!/INPUT|SELECT/.test(document.activeElement.tagName)){e.preventDefault();undo()}});
+
+/* correctifs proposés */
+function keyOf(i){const p=parseDesc(S.rows[i].desc);return p.str!=null?p.pcode+'|'+p.str:null}
+function fixesFor(is){
+  const r=S.rows[is.row],out=[];const k=keyOf(is.row);
+  if(is.kind==='single'){
+    let prev=-1,next=-1;
+    for(let j=is.row-1;j>=0;j--) if(keyOf(j)===k){prev=j;break}
+    for(let j=is.row+1;j<S.rows.length;j++) if(keyOf(j)===k){next=j;break}
+    if(prev>=0) out.push({label:`Rattacher au point ${S.rows[prev].name} (retirer .1)`,fn:()=>patch(is.row,p=>p.ctrl=null,'Ligne d\'un point : rattachée à la ligne précédente')});
+    if(next>=0&&parseDesc(S.rows[next].desc).ctrl==='1') out.push({label:`Continuer vers ${S.rows[next].name} (retirer son .1)`,fn:()=>patch(next,p=>p.ctrl=null,'Ligne d\'un point : prolongée vers le point suivant')});
+    out.push({label:'Point seulement (retirer le string)',fn:()=>patch(is.row,p=>{p.str=null;p.ctrl=null},'String retiré')});
+  }
+  if(is.kind==='orphan') out.push({label:is.ctrl===2?'Remplacer par .1':'Débuter la ligne ici (.1)',fn:()=>patch(is.row,p=>p.ctrl='1','Début de ligne ajouté')});
+  if(is.kind==='closeShort') out.push({label:'Retirer la fermeture (.2)',fn:()=>patch(is.row,p=>p.ctrl=null,'Fermeture retirée')});
+  if(is.kind==='badCtrl'||is.kind==='endNoCurve'||is.kind==='midNoCurve') out.push({label:'Retirer le code de contrôle',fn:()=>patch(is.row,p=>p.ctrl=null,'Contrôle invalide retiré')});
+  if(is.kind==='curveOpen') out.push({label:`Fin de courbe (.4) au point ${S.rows[is.last].name}`,fn:()=>patch(is.last,p=>p.ctrl='4','Fin de courbe ajoutée')});
+  if(is.kind==='cross'&&is.swap){const [a,b]=is.swap;out.push({label:`Inverser ${S.rows[a].name} ↔ ${S.rows[b].name}`,fn:()=>doSwap(a,b,false)});}
+  if(is.kind==='rect'){const [a,b,c]=is.rect;out.push({label:`Compléter le rectangle (nouveau point ${nextName()})`,fn:()=>buildRect(a,b,c,'')});}
+  if(is.kind==='spaces') out.push({label:'Nettoyer les espaces',fn:()=>setDesc(is.row,r.desc.trim().replace(/\s+/g,' '),'Espaces nettoyés')});
+  if(is.kind==='unknown'){
+    const pc=parseDesc(r.desc).pcode;const cands=[];
+    for(const c of CODES.keys()){ if(c.length===pc.length){let d=0;for(let q=0;q<c.length;q++)if(c[q]!==pc[q])d++; if(d===1)cands.push(c);} else if(Math.abs(c.length-pc.length)===1&&(c.includes(pc)||pc.includes(c)))cands.push(c);}
+    // codes déjà utilisés dans le levé en premier
+    const used=new Set(S.rows.map(x=>parseDesc(x.desc).pcode));
+    cands.sort((a,b)=>(used.has(b)-used.has(a)));
+    for(const c of cands.slice(0,3)) out.push({label:`${c} ${CODES.get(c).abr}`,title:CODES.get(c).desc,fn:()=>patch(is.row,p=>p.pcode=c,`Code ${pc} → ${c}`)});
+  }
+  return out;
+}
+
+/* ---------- Rendu panneau ---------- */
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function renderSummary(){
+  const n={err:0,warn:0,info:0};S.issues.forEach(i=>n[i.sev]++);
+  const mod=S.rows.filter(isModified).length;
+  $('summary').innerHTML=`<div class="stat"><b>${S.rows.length}</b><span>points</span></div><div class="stat"><b>${S.lines.length}</b><span>lignes</span></div><div class="stat err"><b>${n.err}</b><span>erreurs</span></div><div class="stat warn"><b>${n.warn}</b><span>avertis.</span></div><div class="stat mod"><b>${mod}</b><span>corrigés</span></div>`;
+}
+const SEV={err:'Erreur',warn:'À vérifier',info:'Note'};
+function visibleIssues(){return S.issues.filter(i=>i.sev!=='info'||$('fInfo').checked)}
+function renderIssues(){
+  const list=visibleIssues();const el=$('issues');
+  if(!S.rows.length){el.innerHTML='<p class="empty">Ouvrez un fichier de levé pour lancer la validation.</p>';return}
+  if(!list.length){el.innerHTML='<p class="empty"><span class="pill ok">Conforme</span> Aucune erreur de code ni de liaison détectée.</p>';return}
+  el.innerHTML='';
+  list.forEach((is,k)=>{
+    const r=S.rows[is.row];const d=document.createElement('div');
+    d.className='issue '+is.sev+(S.sel===is.row?' cur':'');d.tabIndex=0;
+    d.innerHTML=`<div class="hd"><span class="pt">${esc(r.name)} · <span style="color:var(--muted)">${esc(r.desc.trim()||'∅')}</span></span><span class="pill ${is.sev}">${SEV[is.sev]}</span></div><div class="msg">${esc(is.msg)}</div>`;
+    const fx=fixesFor(is);
+    if(fx.length){const a=document.createElement('div');a.className='actions';
+      fx.forEach(f=>{const b=document.createElement('button');b.type='button';b.className='fix';b.textContent=f.label;if(f.title)b.title=f.title;b.onclick=e=>{e.stopPropagation();f.fn();toast('Correction appliquée : '+f.label)};a.appendChild(b)});d.appendChild(a);}
+    d.onclick=()=>{S.cur=k;select(is.row,true)};
+    d.onkeydown=e=>{if(e.key==='Enter')d.click()};
+    el.appendChild(d);
+  });
+}
+function nav(dir){const l=visibleIssues();if(!l.length)return;let k=l.findIndex(i=>i.row===S.sel);k=k<0?(dir>0?0:l.length-1):(k+dir+l.length)%l.length;select(l[k].row,true)}
+$('bNext').onclick=()=>nav(1);$('bPrev').onclick=()=>nav(-1);$('fInfo').onchange=()=>{renderIssues();draw()};
+
+function renderInsp(){
+  const el=$('insp');const i=S.sel;
+  if(i==null||!S.rows[i]){S.rectPrev=null;el.innerHTML=S.rows.length?'<p class="note">Cliquez un point sur le plan ou une anomalie pour l\'éditer.</p>':'';return}
+  const r=S.rows[i];const p=parseDesc(r.desc);const c=p.pcode&&CODES.get(p.pcode);
+  const L=S.lineOf.get(i);
+  const rp={a:'',b:'',c:''};if(L&&L.type==='line'&&!L.closed&&L.pts.length===3){rp.a=S.rows[L.pts[0]].name;rp.b=S.rows[L.pts[1]].name;rp.c=S.rows[L.pts[2]].name;}
+  const ctrlOpts=['<option value="">— aucun (continuer)</option>'].concat(Object.entries(CTRL_LABEL).map(([k,v])=>`<option value="${k}" ${p.ctrl===k?'selected':''}>.${k} ${v}</option>`)).join('');
+  el.innerHTML=`<div class="insp">
+    <h2><span class="mono">${esc(r.name)}</span>${isModified(r)?'<span class="pill ok">corrigé</span>':''}</h2>
+    <div class="coords mono"><div><span>Est</span>${r.e.toFixed(3)}</div><div><span>Nord</span>${r.n.toFixed(3)}</div><div><span>Élév.</span>${r.z.toFixed(3)}</div></div>
+    <div class="row3">
+      <div class="field"><label for="iPc">Pcode</label><input id="iPc" class="mono" list="codeList" value="${esc(p.pcode||'')}" inputmode="numeric"></div>
+      <div class="field"><label for="iStr">String</label><input id="iStr" class="mono" value="${esc(p.str??'')}" inputmode="numeric"></div>
+      <div class="field"><label for="iCtl">Contrôle</label><select id="iCtl">${ctrlOpts}</select></div>
+    </div>
+    <div class="field"><label for="iDesc">Description complète</label><input id="iDesc" class="mono" value="${esc(r.desc)}"></div>
+    <div class="codeinfo">${c?`<span class="swatch" style="background:${colOfCode(p.pcode)}"></span><b>${c.code} ${esc(c.abr)}</b> · ${esc(c.desc)} → <span class="mono">${esc(layerOf(c.code))}</span>`:(p.pcode?`<b style="color:var(--err)">Code ${esc(p.pcode)} inconnu</b>`:'')}${L?` · ligne de ${L.pts.length} pts${L.closed?' fermée':''}`:''}</div>
+    ${r.desc!==r.orig?`<div class="note">Original : <del class="mono">${esc(r.orig)}</del></div>`:''}
+    <div class="actions"><button class="btn sm primary" id="iApply" type="button">Appliquer</button>${r.desc!==r.orig?'<button class="btn sm" id="iRevert" type="button">Rétablir la description</button>':''}</div>
+    <div class="swapbox">
+      <div class="field"><label for="iSwap">Inverser la numérotation avec le matricule</label>
+        <div class="swaprow"><input id="iSwap" class="mono" list="nameList" placeholder="ex. ${esc(S.rows[Math.min(i+1,S.rows.length-1)].name)}" value="${S.swapPick===i?'':''}"><button class="btn sm" id="iSwapGo" type="button">Inverser</button><button class="btn sm" id="iSwapPick" type="button" aria-pressed="${S.swapPick===i}">${S.swapPick===i?'Cliquez un point sur le plan…':'Choisir sur le plan'}</button></div></div>
+      <label class="note"><input type="checkbox" id="iSwapDesc"> Les descriptions suivent les points (sinon elles restent à leur rang dans la séquence)</label>
+      ${r.swapNote?`<div class="note"><span class="modtag">${esc(r.swapNote)}</span> · utilisez Annuler pour revenir</div>`:''}
+    </div>
+    <div class="swapbox">
+      <div class="field"><label>Rectangle par 3 points (coin au milieu)</label>
+        <div class="rect4"><input id="iRA" class="mono" list="nameList" aria-label="Premier point" placeholder="Début" value="${esc(rp.a)}"><input id="iRB" class="mono" list="nameList" aria-label="Coin" placeholder="Coin" value="${esc(rp.b)}"><input id="iRC" class="mono" list="nameList" aria-label="Dernier point" placeholder="Fin" value="${esc(rp.c)}"><input id="iRN" class="mono" aria-label="Matricule du nouveau point" placeholder="Nouveau" value="${esc(nextName())}"></div></div>
+      <div class="note" id="iRInfo"></div>
+      <div class="actions"><button class="btn sm" id="iRGo" type="button">Construire le 4e point</button></div>
+    </div>
+    ${r.added?'<div class="note"><span class="modtag">Point calculé (attribut CALCUL)</span> ajouté au levé · utilisez Annuler pour le retirer</div>':''}
+  </div>`;
+  const sync=()=>{const q=parseDesc($('iDesc').value);q.pcode=$('iPc').value.trim()||q.pcode;q.str=$('iStr').value.trim()||null;q.ctrl=q.str?($('iCtl').value||null):null;$('iDesc').value=formatDesc(q)};
+  ['iPc','iStr'].forEach(id=>$(id).oninput=sync);$('iCtl').onchange=sync;
+  $('iApply').onclick=()=>{setDesc(i,$('iDesc').value,'Édition manuelle');toast('Description mise à jour.')};
+  $('iDesc').onkeydown=e=>{if(e.key==='Enter')$('iApply').click()};
+  if($('iRevert'))$('iRevert').onclick=()=>setDesc(i,r.orig,'Retour à l\'original');
+  const nameIdx=()=>{const v=$('iSwap').value.trim();let j=S.rows.findIndex(x=>x.name===v);if(j<0&&v)j=S.rows.findIndex(x=>x.name.endsWith(v));return j};
+  $('iSwapGo').onclick=()=>{const j=nameIdx();if(j<0){toast('Matricule introuvable dans ce levé.');return}if(j===i){toast('Choisissez un autre point.');return}doSwap(i,j,$('iSwapDesc').checked)};
+  $('iSwap').onkeydown=e=>{if(e.key==='Enter')$('iSwapGo').click()};
+  $('iSwapPick').onclick=()=>{S.swapPick=S.swapPick===i?null:i;S.swapDesc=$('iSwapDesc').checked;renderInsp();draw()};
+  if(S.swapPick===i)$('iSwapDesc').checked=!!S.swapDesc;
+  const idx=v=>{v=v.trim();if(!v)return -1;let j=S.rows.findIndex(x=>x.name===v);if(j<0)j=S.rows.findIndex(x=>x.name.endsWith(v));return j};
+  const rupd=()=>{const k=rectCheck(idx($('iRA').value),idx($('iRB').value),idx($('iRC').value));
+    if(k.err){$('iRInfo').textContent=($('iRA').value||$('iRB').value||$('iRC').value)?k.err:'Sélectionnez un point d\'une ligne de 3 points, ou saisissez les matricules.';S.rectPrev=null;$('iRGo').disabled=true;}
+    else{const q=k.q;$('iRInfo').innerHTML=`Angle au coin <b>${q.ang.toFixed(2)}°</b>${Math.abs(q.ang-90)>3?' <span class="pill warn">pas d\'équerre</span>':''} · côtés ${q.ab.toFixed(3)} m × ${q.bc.toFixed(3)} m<br>Nouveau point : <span class="mono">E ${q.e.toFixed(3)} · N ${q.n.toFixed(3)} · Z ${q.z.toFixed(3)}</span>`;S.rectPrev={a:k.a,c:k.c,q};$('iRGo').disabled=false;}
+    draw()};
+  ['iRA','iRB','iRC'].forEach(id=>$(id).oninput=rupd);rupd();
+  $('iRGo').onclick=()=>buildRect(idx($('iRA').value),idx($('iRB').value),idx($('iRC').value),$('iRN').value);
+}
+function renderPts(){
+  const q=$('ptSearch').value.trim().toLowerCase();const m=$('ptMod').checked;
+  const rows=S.rows.filter(r=>(!m||isModified(r))&&(!q||r.name.toLowerCase().includes(q)||r.desc.toLowerCase().includes(q)));
+  $('ptBody').innerHTML=rows.slice(0,3000).map(r=>{const sv=S.sevOf.get(r.i);return `<tr class="click${S.sel===r.i?' sel':''}" data-i="${r.i}"><td class="mono">${sv&&sv!=='info'?`<span class="pill ${sv}" style="margin-right:6px">${sv==='err'?'!':'?'}</span>`:''}${esc(r.name)}</td><td class="mono">${r.desc!==r.orig?`<del>${esc(r.orig)}</del> <span class="modtag">${esc(r.desc)}</span>`:esc(r.desc)}${r.swapNote?` <span class="modtag">${esc(r.swapNote)}</span>`:''}</td><td class="mono">${r.z.toFixed(3)}</td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Aucun point.</td></tr>';
+}
+$('ptBody').onclick=e=>{const tr=e.target.closest('tr[data-i]');if(tr)select(+tr.dataset.i,true)};
+$('ptSearch').oninput=renderPts;$('ptMod').onchange=renderPts;
+function renderCodes(){
+  const cnt=new Map();for(const r of S.rows){const p=parseDesc(r.desc);if(p.pcode)cnt.set(p.pcode,(cnt.get(p.pcode)||0)+1)}
+  const ks=[...cnt.keys()].sort((a,b)=>a-b);
+  $('codeBody').innerHTML=ks.map(k=>{const c=CODES.get(k);const lay=layerOf(k);
+    return `<tr><td class="mono"><span class="swatch" style="background:${colOfCode(k)}"></span>${k}${c?' '+esc(c.abr):''}</td><td>${c?esc(c.desc):'<b style="color:var(--err)">inconnu</b>'}<br><span class="src">${c?(layerOv[k]?'modifié':c.src):''}</span></td><td><input class="lay" list="layerList" data-k="${k}" value="${esc(lay)}" aria-label="Couche du code ${k}" ${c?'':'disabled'}></td><td class="mono">${cnt.get(k)}</td></tr>`}).join('')||'<tr><td colspan="4" class="empty">Aucun code.</td></tr>';
+}
+$('codeBody').onchange=e=>{const t=e.target;if(!t.dataset.k)return;const v=t.value.trim().toUpperCase();const base=CODES.get(t.dataset.k).layer;
+  if(!v||v===pref(base)) delete layerOv[t.dataset.k]; else layerOv[t.dataset.k]='C-'+v.slice(2);
+  LS.set('vl.layers',layerOv);renderCodes();draw();toast(`Code ${t.dataset.k} → ${layerOf(t.dataset.k)}`)};
+$('bResetLay').onclick=()=>{layerOv={};LS.set('vl.layers',layerOv);renderCodes();draw();toast('Couches du gabarit rétablies.')};
+$('layerList').innerHTML=Object.keys(DICT.layers).map(n=>`<option value="${n}">`).join('');
+$('codeList').innerHTML=[...CODES.values()].map(c=>`<option value="${c.code}">${c.abr} · ${esc(c.desc)}</option>`).join('');
+['oMaxSeg','oDup','oStep'].forEach(id=>$(id).onchange=()=>S.rows.length&&run());
+$('oPrefix').onchange=()=>{renderCodes();renderInsp();draw()};
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x===t));
+  document.querySelectorAll('.pane').forEach(p=>p.hidden=p.id!==t.dataset.tab);
+  LS.set('vl.tab',t.dataset.tab);
+});
+{const t=LS.get('vl.tab',null);const b=t&&document.querySelector(`.tab[data-tab="${t}"]`);if(b)b.click();}
+
+function select(i,zoom){
+  if(S.swapPick!=null&&S.swapPick!==i)S.swapPick=null;
+  S.sel=i;renderInsp();renderIssues();renderPts();
+  if(zoom&&S.view){const r=S.rows[i];const L=S.lineOf.get(i);
+    if(L&&L.pts.length>1){let x0=1e99,y0=1e99,x1=-1e99,y1=-1e99;for(const j of L.pts){const q=S.rows[j];x0=Math.min(x0,q.e);x1=Math.max(x1,q.e);y0=Math.min(y0,q.n);y1=Math.max(y1,q.n)}
+      fitBox(x0,y0,x1,y1,8)}
+    else{S.view.cx=r.e;S.view.cy=r.n;S.view.k=Math.max(S.view.k,40);}
+  }
+  draw();
+  const cur=document.querySelector('.issue.cur');if(cur&&zoom)cur.scrollIntoView({block:'nearest'});
+}
+
+/* ---------- Plan ---------- */
+const cv=$('plan');const ctx=cv.getContext('2d');
+function size(){const r=pw.getBoundingClientRect();const d=window.devicePixelRatio||1;cv.width=Math.max(1,r.width*d);cv.height=Math.max(1,r.height*d);ctx.setTransform(d,0,0,d,0,0);S.W=r.width;S.H=r.height;draw()}
+new ResizeObserver(size).observe(pw);
+function fitBox(x0,y0,x1,y1,pad){const w=Math.max(x1-x0,pad),h=Math.max(y1-y0,pad);S.view={cx:(x0+x1)/2,cy:(y0+y1)/2,k:Math.min(S.W/w,S.H/h)*0.82}}
+function fit(){const R=S.rows.filter(r=>!r.bad);if(!R.length)return;let x0=1e99,y0=1e99,x1=-1e99,y1=-1e99;for(const r of R){x0=Math.min(x0,r.e);x1=Math.max(x1,r.e);y0=Math.min(y0,r.n);y1=Math.max(y1,r.n)}fitBox(x0,y0,x1,y1,5);draw()}
+$('tFit').onclick=fit;
+const W2S=(x,y)=>[(x-S.view.cx)*S.view.k+S.W/2,S.H/2-(y-S.view.cy)*S.view.k];
+const S2W=(sx,sy)=>[(sx-S.W/2)/S.view.k+S.view.cx,(S.H/2-sy)/S.view.k+S.view.cy];
+function niceStep(px){const m=px/S.view.k;const p=Math.pow(10,Math.floor(Math.log10(m)));return [1,2,5,10].map(f=>f*p).find(v=>v>=m)}
+function draw(){
+  if(!S.W)return;const css=getComputedStyle(document.documentElement);
+  ctx.fillStyle=css.getPropertyValue('--plan').trim()||'#0b0f12';ctx.fillRect(0,0,S.W,S.H);
+  if(!S.view||!S.rows.length){ctx.fillStyle='#8b9aa3';ctx.font='15px Barlow, sans-serif';ctx.textAlign='center';if(S.W<560){ctx.fillText('Touchez « Ouvrir un levé… »',S.W/2,S.H/2-10);ctx.fillText('ou « Coller » pour charger un levé',S.W/2,S.H/2+12);}else ctx.fillText('Glissez un fichier de levé ici ou utilisez « Ouvrir un levé… »',S.W/2,S.H/2);ctx.textAlign='left';return}
+  // grille métrique
+  const st=niceStep(70);ctx.strokeStyle=css.getPropertyValue('--plan-grid').trim();ctx.lineWidth=1;ctx.beginPath();
+  const [wx0,wy1]=S2W(0,0),[wx1,wy0]=S2W(S.W,S.H);
+  for(let x=Math.floor(wx0/st)*st;x<=wx1;x+=st){const s=W2S(x,0)[0];ctx.moveTo(s,0);ctx.lineTo(s,S.H)}
+  for(let y=Math.floor(wy0/st)*st;y<=wy1;y+=st){const s=W2S(0,y)[1];ctx.moveTo(0,s);ctx.lineTo(S.W,s)}
+  ctx.stroke();
+  const selL=S.sel!=null?S.lineOf.get(S.sel):null;
+  S.lines.forEach((L,k)=>{const v=S.verts[k];ctx.strokeStyle=colOfCode(L.pcode);ctx.lineWidth=L===selL?3:1.4;ctx.beginPath();v.forEach((p,j)=>{const [x,y]=W2S(p[0],p[1]);j?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();});
+  // points
+  const showInfo=$('fInfo').checked;
+  const lab=S.view.k>6;ctx.font='11px "JetBrains Mono", monospace';
+  for(const r of S.rows){if(r.bad)continue;const [x,y]=W2S(r.e,r.n);if(x<-40||y<-40||x>S.W+40||y>S.H+40)continue;
+    const p=parseDesc(r.desc);ctx.strokeStyle=p.pcode?colOfCode(p.pcode):'#fff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x-3,y-3);ctx.lineTo(x+3,y+3);ctx.moveTo(x+3,y-3);ctx.lineTo(x-3,y+3);ctx.stroke();
+    const sv=S.sevOf.get(r.i);
+    if(sv&&(sv!=='info'||showInfo)){ctx.strokeStyle=sv==='err'?'#ff5a52':(sv==='warn'?'#f0a83a':'#79a9e6');ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,9,0,7);ctx.stroke();}
+    if(isModified(r)){ctx.fillStyle='#3cc4b8';ctx.beginPath();ctx.arc(x+7,y-7,3,0,7);ctx.fill();}
+    if(lab){let dy=-6;
+      if(S.showNum){ctx.fillStyle='#9fb0b9';ctx.fillText(r.name.length>6&&S.view.k<25?r.name.slice(-3):r.name,x+7,y+dy);dy+=13}
+      if(S.showCode){ctx.fillStyle=p.pcode?colOfCode(p.pcode):'#fff';ctx.fillText(r.desc.trim(),x+7,y+dy+13);dy+=13}
+      if(S.showElev){ctx.fillStyle='#7fa1b0';ctx.fillText(r.z.toFixed(2),x+7,y+dy+13)}
+    }
+  }
+  if(S.rectPrev&&S.sel!=null){const {a,c,q}=S.rectPrev;const P1=W2S(S.rows[c].e,S.rows[c].n),P2=W2S(q.e,q.n),P3=W2S(S.rows[a].e,S.rows[a].n);
+    ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle='#3cc4b8';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(...P1);ctx.lineTo(...P2);ctx.lineTo(...P3);ctx.stroke();ctx.restore();
+    ctx.strokeStyle='#3cc4b8';ctx.strokeRect(P2[0]-4,P2[1]-4,8,8);}
+  if(S.swapPick!=null){ctx.fillStyle='#3cc4b8';ctx.font='600 13px Barlow, sans-serif';ctx.fillText('Inversion : cliquez le point à échanger avec '+S.rows[S.swapPick].name+' (Échap pour annuler)',12,S.H-40);}
+  if(S.sel!=null){const r=S.rows[S.sel];const [x,y]=W2S(r.e,r.n);ctx.strokeStyle='#3cc4b8';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.stroke();}
+  // échelle
+  const sb=niceStep(110);const px=sb*S.view.k;ctx.strokeStyle='#dfe7ea';ctx.fillStyle='#dfe7ea';ctx.lineWidth=2;
+  const bx=S.W-px-16,by=S.H-18;ctx.beginPath();ctx.moveTo(bx,by-5);ctx.lineTo(bx,by);ctx.lineTo(bx+px,by);ctx.lineTo(bx+px,by-5);ctx.stroke();
+  ctx.font='11px "JetBrains Mono", monospace';ctx.textAlign='center';ctx.fillText(sb>=1?sb+' m':(sb*100).toFixed(0)+' cm',bx+px/2,by-7);
+  // nord
+  const nx=S.W-22,ny=58;ctx.beginPath();ctx.moveTo(nx,ny-16);ctx.lineTo(nx+6,ny);ctx.lineTo(nx,ny-4);ctx.lineTo(nx-6,ny);ctx.closePath();ctx.fill();ctx.fillText('N',nx,ny+13);ctx.textAlign='left';
+}
+function toggle(id,key){const b=$(id);b.onclick=()=>{S[key]=!S[key];b.setAttribute('aria-pressed',S[key]);draw()}}
+toggle('tNum','showNum');toggle('tCode','showCode');toggle('tElev','showElev');
+
+const ptrs=new Map();let drag=null,moved=false,pinch=null;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.offsetX,e.offsetY]);moved=false;
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]),k:S.view?.k}}else drag={x:e.offsetX,y:e.offsetY}});
+cv.addEventListener('pointermove',e=>{
+  if(S.view){const [x,y]=S2W(e.offsetX,e.offsetY);$('readout').textContent=`E ${x.toFixed(3)} · N ${y.toFixed(3)}`;}
+  if(!ptrs.has(e.pointerId)||!S.view)return;ptrs.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()];S.view.k=pinch.k*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch.d;moved=true;draw();return}
+  if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;S.view.cx-=dx/S.view.k;S.view.cy+=dy/S.view.k;drag={x:e.offsetX,y:e.offsetY};draw()}});
+cv.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
+  if(!moved&&S.view&&ptrs.size===0){let best=-1,bd=14;for(const r of S.rows){if(r.bad)continue;const [x,y]=W2S(r.e,r.n);const d=Math.hypot(x-e.offsetX,y-e.offsetY);if(d<bd){bd=d;best=r.i}}
+    if(best>=0&&S.swapPick!=null&&best!==S.swapPick){const a=S.swapPick;doSwap(a,best,!!S.swapDesc);select(a,false);return}
+    if(best>=0){select(best,false);const t=document.querySelector('.tab[data-tab="pAnom"]');if(t.getAttribute('aria-selected')!=='true')t.click()}}
+  drag=null});
+cv.addEventListener('wheel',e=>{if(!S.view)return;e.preventDefault();const [x,y]=S2W(e.offsetX,e.offsetY);const f=Math.exp(-e.deltaY*0.0015);S.view.k*=f;S.view.cx=x-(e.offsetX-S.W/2)/S.view.k;S.view.cy=y-(S.H/2-e.offsetY)/S.view.k;draw()},{passive:false});
+cv.addEventListener('dblclick',fit);
+
+/* ---------- Exports ---------- */
+let dl=null;(async()=>{try{dl=await window.claude?.use?.('downloads')}catch(e){dl=null}})();
+async function save(filename,data){
+  if(dl){try{await dl.save({filename,data});toast(`${filename} enregistré.`);return}catch(e){if(e&&e.code==='declined'){toast('Enregistrement annulé.');return}if(e&&e.code==='rate_limited'){toast('Une demande d\'enregistrement est déjà ouverte.');return}}}
+  try{const blob=data instanceof Blob?data:new Blob([data],{type:'application/octet-stream'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);toast(`${filename} prêt.`)}
+  catch(e){toast('Le téléchargement est bloqué dans cette vue.')}
+}
+const base=()=>S.fileName.replace(/\.[^.]+$/,'');
+const ext=()=>(S.fileName.match(/\.[^.]+$/)||['.txt'])[0];
+/* Fichiers produits (partagés entre l'export et l'envoi par courriel) */
+function txtFile(){const txt=buildModifText(S.F,S.rows);return {name:base()+'_modif'+(/\.txt$/i.test(ext())?ext():'.txt'),data:S.enc==='utf-8'?new TextEncoder().encode(txt):toCp1252(txt),type:'text/plain'}}
+function dxfOpts(){return {threeD:$('o3d').checked,h:+$('oTxtH').value||.2,num:$('oDxNum').checked,elev:$('oDxElev').checked,code:$('oDxCode').checked,step:Math.max(.05,+$('oStep').value||.25),pref}}
+function dxfFile(){const nm=base()+(S.rows.some(isModified)?'_modif':'');return {name:nm+'.dxf',data:toCp1252(buildDXF(S.rows,S.lines,layerOf,colorIdx,dxfOpts())),type:'application/dxf'}}
+function csvFile(){const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const csv=['Matricule;Avant;Après;Motif;Heure'].concat(S.journal.map(j=>[j.name,j.before,j.after,j.why,j.t].map(q).join(';'))).join('\r\n');
+  return {name:base()+'_modif_journal.csv',data:new TextEncoder().encode('\ufeff'+csv),type:'text/csv'}}
+$('bTxt').onclick=()=>{const f=txtFile();save(f.name,f.data);if(!S.rows.some(isModified))toast('Aucune correction : la copie _modif est identique à l\'original.');};
+$('bDxf').onclick=()=>{
+  const errs=S.issues.filter(i=>i.sev==='err').length;const f=dxfFile();
+  // Dans claude.ai le .dxf doit voyager dans un .zip ; hébergé ailleurs, il est enregistré tel quel
+  if(dl) save(f.name.replace(/\.dxf$/,'_dxf.zip'),makeZip([{name:f.name,data:f.data}])); else save(f.name,f.data);
+  if(errs)toast(`DXF produit avec ${errs} erreur(s) non corrigée(s) : ces points sont dessinés sans liaison.`);
+};
+$('bJournal').onclick=()=>{const f=csvFile();save(f.name,f.data)};
+
+/* ---------- Envoi par Outlook ----------
+   Une page web ne peut pas joindre de fichier à un courriel « mailto: ».
+   On utilise donc le partage du système (iPhone / Android / Windows) : choisir Outlook
+   dans la feuille de partage crée un nouveau message avec les fichiers joints.
+   Sans partage de fichiers : téléchargement des fichiers + ouverture d'un courriel prérempli. */
+function mailFiles(){const out=[];if($('mTxt').checked)out.push(txtFile());if($('mDxf').checked)out.push(dxfFile());if($('mCsv').checked)out.push(csvFile());
+  return out.map(f=>{try{return new File([f.data],f.name,{type:f.type})}catch(e){const b=new Blob([f.data],{type:f.type});b.name=f.name;return b}})}
+function canShareFiles(fs){try{return !!(navigator.canShare&&navigator.share&&navigator.canShare({files:fs}))}catch(e){return false}}
+function mailDefaults(){
+  const n={err:0,warn:0};S.issues.forEach(i=>{if(i.sev in n)n[i.sev]++});
+  const mod=S.rows.filter(isModified).length,calc=S.rows.filter(r=>r.added).length;
+  $('mSubj').value=`Levé ${base()} – fichiers ${mod?'corrigés':'validés'}`;
+  $('mBody').value=`Bonjour,\n\nVoici les fichiers du levé ${S.fileName} :\n- ${S.rows.length} points, ${S.lines.length} lignes\n- ${mod} point(s) corrigé(s)${calc?` dont ${calc} point(s) calculé(s) (CALCUL)`:''}\n- ${n.err} erreur(s) et ${n.warn} avertissement(s) restants\n\nMerci.`;
+}
+function mailRefresh(){
+  const t=txtFile().name,d=dxfFile().name;$('mTxtName').textContent=t;$('mDxfName').textContent=d;$('mCsvName').textContent=base()+'_modif_journal.csv';
+  const fs=mailFiles();
+  if(!fs.length){$('mHow').textContent='Cochez au moins un fichier.';$('mGo').disabled=true;return}
+  $('mGo').disabled=false;
+  if(canShareFiles(fs)){$('mHow').innerHTML='La feuille de partage va s\'ouvrir : choisissez <b>Outlook</b>. Les fichiers sont joints au nouveau message ; le destinataire est copié, collez-le dans le champ «&nbsp;À&nbsp;» s\'il n\'est pas déjà rempli.';$('mGo').textContent='Ouvrir Outlook';S.mailMode='share';}
+  else if(fs.length>1&&canShareFiles([fs[0]])){$('mHow').innerHTML='Cet appareil ne peut pas partager tous ces fichiers ensemble (le .dxf n\'est souvent pas accepté par Chrome). Les fichiers seront téléchargés puis un courriel prérempli s\'ouvrira : joignez-les depuis Téléchargements.';$('mGo').textContent='Télécharger et ouvrir le courriel';S.mailMode='mailto';}
+  else{$('mHow').innerHTML='Ce navigateur ne permet pas de joindre des fichiers automatiquement. Les fichiers seront téléchargés, puis un courriel prérempli s\'ouvrira dans votre messagerie (Outlook si c\'est l\'application par défaut) : joignez-les depuis Téléchargements.';$('mGo').textContent='Télécharger et ouvrir le courriel';S.mailMode='mailto';}
+}
+$('bMail').onclick=()=>{$('mTo').value=LS.get('vl.mailTo','');mailDefaults();mailRefresh();$('mailSheet').hidden=false};
+$('mClose').onclick=()=>{$('mailSheet').hidden=true};
+['mTxt','mDxf','mCsv'].forEach(id=>$(id).onchange=mailRefresh);
+$('mGo').onclick=()=>{
+  const to=$('mTo').value.trim(),subj=$('mSubj').value,body=$('mBody').value;LS.set('vl.mailTo',to);
+  const fs=mailFiles();
+  if(S.mailMode==='share'){
+    if(to&&navigator.clipboard?.writeText)navigator.clipboard.writeText(to).catch(()=>{});
+    navigator.share({files:fs,title:subj,text:body}).then(()=>{$('mailSheet').hidden=true;toast(to?'Destinataire copié : collez-le dans « À ».':'Fichiers transmis à Outlook.')})
+      .catch(e=>{if(e&&e.name==='AbortError')return;S.mailMode='mailto';mailRefresh();toast('Partage refusé par l\'appareil : utilisez « Télécharger et ouvrir le courriel ».')});
+    return;
+  }
+  (async()=>{
+    if($('mTxt').checked){const f=txtFile();await save(f.name,f.data)}
+    if($('mDxf').checked){const f=dxfFile();if(dl)await save(f.name.replace(/\.dxf$/,'_dxf.zip'),makeZip([{name:f.name,data:f.data}]));else await save(f.name,f.data)}
+    if($('mCsv').checked){const f=csvFile();await save(f.name,f.data)}
+    const names=fs.map(f=>f.name).join(', ');
+    const url='mailto:'+encodeURIComponent(to).replace(/%40/g,'@')+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body+'\n\nPièces jointes à ajouter : '+names);
+    const a=document.createElement('a');a.href=url;a.target='_top';document.body.appendChild(a);a.click();a.remove();
+    $('mailSheet').hidden=true;toast('Joignez les fichiers téléchargés au courriel : '+names);
+  })();
+};
+
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
+
+/* Exemple au démarrage : le levé fourni */
+renderIssues();
+requestAnimationFrame(()=>{size();if(SAMPLE.text)load(SAMPLE.text,SAMPLE.name)});
+
+/* Application installable et utilisable hors ligne au terrain */
+if('serviceWorker' in navigator && location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+
+</script>
+</body>
+</html>
