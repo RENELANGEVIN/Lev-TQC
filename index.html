@@ -241,7 +241,7 @@ label.btn{user-select:none}
             <code>.6</code><span>Cercle par 2 ou 3 points</span>
             <code>.7</code><span>Continuer la ligne (même effet qu'aucun code)</span>
           </div>
-          <p class="note">Format lu&nbsp;: <code>Matricule,Est,Nord,Élév,Description</code> où la description est <code>Pcode String.Contrôle [attributs]</code>, ex. <code>526 1.1</code>. Le fichier _modif ne change que les descriptions corrigées et, pour deux points inversés, leurs coordonnées (chaque matricule prend la position de l'autre). Un point calculé (rectangle) reçoit le code et le string de sa ligne avec .2 et l'attribut CALCUL (ex. <code>526 8.2 CALCUL</code>), et il est inséré juste après le dernier point de sa ligne.</p>
+          <p class="note">Format lu&nbsp;: <code>Matricule,Est,Nord,Élév,Description</code> où la description est <code>Pcode String.Contrôle [attributs]</code>, ex. <code>526 1.1</code>. Le fichier _modif est toujours écrit au format <code>P,N,E,Z,D</code> (Point, Nord, Est, Élév., Description), sans ligne d'en-tête, quel que soit le format lu. Il contient les descriptions corrigées, les coordonnées des points inversés et les points calculés (rectangle), insérés juste après le dernier point de leur ligne.</p>
           <p class="note">Version 2026-10-15 · fonctionne hors ligne une fois ouverte · les fichiers restent sur l'appareil.</p>
           <div class="actions"><button class="btn sm" id="bJournal" type="button" disabled>Exporter le journal des corrections (.csv)</button><button class="btn sm" id="bResetLay" type="button">Rétablir les couches du gabarit</button></div>
         </div>
@@ -319,6 +319,12 @@ function parseFile(text){
       else if(/^description$/.test(k)) hmap.d=i;});
     hmap.len=f0.length;
   }
+  /* Sans en-tête : P,N,E,Z,D (standard ArpentNord) ou P,E,N,Z,D (export Leica).
+     Au Québec (MTM/UTM) le Nord (~5 000 000) dépasse toujours l'Est : on tranche sur la médiane. */
+  let order=hmap&&hmap.e!=null&&hmap.n!=null&&hmap.n<hmap.e?'NE':(hmap?'EN':'NE');
+  {const a=[],b=[];for(const l of lines.slice(0,200)){if(l===header)continue;const f=splitLine(l,delim);const x=parseFloat(f[1]),y=parseFloat(f[2]);if(isFinite(x)&&isFinite(y)){a.push(Math.abs(x));b.push(Math.abs(y))}}
+    const med=v=>v.sort((p,q)=>p-q)[v.length>>1]||0;const m1=med(a),m2=med(b);
+    if(m2>m1*1.5) order='EN'; else if(m1>m2*1.5) order='NE';}
   const rows=[];
   lines.forEach((raw,li)=>{
     if(raw===header&&li===lines.indexOf(header)) return;
@@ -327,7 +333,7 @@ function parseFile(text){
     let cols;
     if(hmap&&f.length>=hmap.len&&hmap.e!=null&&hmap.d!=null) cols={name:hmap.name??0,e:hmap.e,n:hmap.n,z:hmap.z,d:hmap.d};
     else if(f.length>=7 && isNaN(parseFloat(f[1]))) cols={name:0,e:3,n:4,z:5,d:6};
-    else cols={name:0,e:1,n:2,z:3,d:4};
+    else cols=order==='EN'?{name:0,e:1,n:2,z:3,d:4}:{name:0,n:1,e:2,z:3,d:4};
     const e=parseFloat(f[cols.e]),n=parseFloat(f[cols.n]),z=parseFloat(f[cols.z]);
     const desc=delim===' '?f.slice(cols.d).join(' '):f.slice(cols.d).join(delim);
     const xyz=[f[cols.e],f[cols.n],f[cols.z]];
@@ -612,12 +618,10 @@ function swapPoints(A,B,withDesc){
   if(withDesc){const t=A.desc;A.desc=B.desc;B.desc=t;}
 }
 function rowLine(r,delim){const f=r.fields.slice(0,r.cols.d);f[r.cols.name]=r.name;f[r.cols.e]=r.xyz[0];f[r.cols.n]=r.xyz[1];f[r.cols.z]=r.xyz[2];f.push(r.desc);return f.join(delim)}
+/* Fichier _modif : format ArpentNord P,N,E,Z,D (Point, Nord, Est, Élév, Description), sans en-tête, quel que soit le format lu */
 function buildModifText(F,rows){
-  const mod=new Map(rows.filter(r=>!r.added&&isModified(r)).map(r=>[r.li,r]));
-  const adds=new Map();for(const r of rows) if(r.added){if(!adds.has(r.li))adds.set(r.li,[]);adds.get(r.li).push(r)}
-  const out=[];
-  F.lines.forEach((raw,li)=>{const r=mod.get(li);out.push(r?rowLine(r,F.delim):raw);for(const a of adds.get(li)||[])out.push(rowLine(a,F.delim))});
-  return out.join(F.eol)+(F.endsWithEol?F.eol:'');
+  const out=rows.map(r=>[r.name,r.xyz[1],r.xyz[0],r.xyz[2],(r.desc||'').trim()].map(v=>(v==null?'':String(v).trim())).join(','));
+  return out.join('\r\n')+'\r\n';
 }
 /* Nouveau point (calculé) inséré dans le fichier juste après « anchor », même format de nombres */
 function makeRow(anchor,name,e,n,z,desc){
@@ -1015,7 +1019,7 @@ function dxfFile(){const nm=base()+(S.rows.some(isModified)?'_modif':'');return 
 function csvFile(){const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
   const csv=['Matricule;Avant;Après;Motif;Heure'].concat(S.journal.map(j=>[j.name,j.before,j.after,j.why,j.t].map(q).join(';'))).join('\r\n');
   return {name:base()+'_modif_journal.csv',data:new TextEncoder().encode('\ufeff'+csv),type:'text/csv'}}
-$('bTxt').onclick=()=>{const f=txtFile();save(f.name,f.data);if(!S.rows.some(isModified))toast('Aucune correction : la copie _modif est identique à l\'original.');};
+$('bTxt').onclick=()=>{const f=txtFile();save(f.name,f.data);if(!S.rows.some(isModified))toast('Aucune correction : le _modif reprend les points au format P,N,E,Z,D.');};
 $('bDxf').onclick=()=>{
   const errs=S.issues.filter(i=>i.sev==='err').length;const f=dxfFile();
   // Dans claude.ai le .dxf doit voyager dans un .zip ; hébergé ailleurs, il est enregistré tel quel
