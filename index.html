@@ -240,6 +240,7 @@ label.btn{user-select:none}
             <code>.5</code><span>Point dans la courbe</span>
             <code>.6</code><span>Cercle par 2 ou 3 points</span>
             <code>.7</code><span>Continuer la ligne (même effet qu'aucun code)</span>
+            <code>_</code><span>Liaison multiple sur un même point : <code>526 1.2_2.1</code> ferme le string 1 et débute le string 2 ; <code>181 1_186 1.1</code> continue le 181 et débute le 186 (double Pcode). Autant de liaisons que voulu.</span>
           </div>
           <p class="note">Format lu&nbsp;: <code>Matricule,Est,Nord,Élév,Description</code> où la description est <code>Pcode String.Contrôle [attributs]</code>, ex. <code>526 1.1</code>. Le fichier _modif est toujours écrit au format <code>P,N,E,Z,D</code> (Point, Nord, Est, Élév., Description), sans ligne d'en-tête, quel que soit le format lu. Il contient les descriptions corrigées, les coordonnées des points inversés et les points calculés (rectangle), insérés juste après le dernier point de leur ligne.</p>
           <p class="note">Version 2026-10-15 · fonctionne hors ligne une fois ouverte · les fichiers restent sur l'appareil.</p>
@@ -342,25 +343,59 @@ function parseFile(text){
   return {eol,endsWithEol,lines,delim,header,rows};
 }
 
+/* Description : « Pcode String.Contrôle [attributs] ».
+   Liaisons multiples séparées par « _ » :
+     « 526 1.2_2.1 »      → même Pcode, string 1 (fermer) et string 2 (début)
+     « 181 1_186 1.1 »    → deux Pcodes (double Pcode, fin et début de chaîne)
+   Un segment d'un seul jeton (« 2.1 ») hérite du Pcode du segment précédent. */
+const LIAISON=/^(\d+)(?:\.(\d*))?$/;
 function parseDesc(desc){
   const t=(desc||'').trim();
-  const tk=t?t.split(/\s+/):[];
-  const r={pcode:null,str:null,ctrl:null,attrs:[],err:null,spaces:(desc||'')!==t||/\s{2,}/.test(t)};
-  if(!tk.length){r.err='Description vide';return r}
-  if(!/^\d{1,4}$/.test(tk[0])){r.err='Pcode non numérique';r.attrs=tk;return r}
-  r.pcode=tk[0];
-  let k=1;
-  if(tk[1]!=null){
-    const m=/^(\d+)(?:\.(\d*))?$/.exec(tk[1]);
-    if(m){r.str=m[1];r.ctrl=m[2]===undefined?null:m[2];k=2;}
+  const r={pcode:null,str:null,ctrl:null,attrs:[],links:[],err:null,spaces:(desc||'')!==t||/\s{2,}/.test(t)||/\s_|_\s/.test(t)};
+  if(!t){r.err='Description vide';return r}
+  const segs=t.split('_').map(s=>s.trim());
+  let pc=null;
+  for(let k=0;k<segs.length;k++){
+    const tk=segs[k]?segs[k].split(/\s+/):[];
+    if(!tk.length){r.err='Liaison vide entre deux « _ »';return r}
+    const last=k===segs.length-1;
+    let lk=null,rest=[];
+    if(k===0){
+      if(!/^\d{1,4}$/.test(tk[0])){r.err='Pcode non numérique';r.attrs=t.split(/\s+/);return r}
+      pc=tk[0];
+      if(tk[1]!=null&&LIAISON.test(tk[1])){lk=tk[1];rest=tk.slice(2)} else rest=tk.slice(1);
+    } else if(tk.length>=2&&/^\d{1,4}$/.test(tk[0])&&LIAISON.test(tk[1])){pc=tk[0];lk=tk[1];rest=tk.slice(2)}
+    else if(LIAISON.test(tk[0])){lk=tk[0];rest=tk.slice(1)}
+    else {r.err=`Liaison « ${segs[k]} » illisible`;return r}
+    if(rest.length&&!last){r.err=`Attributs avant la fin des liaisons (« ${rest.join(' ')} »)`;return r}
+    if(k===0) r.pcode=pc;
+    if(lk!=null){const m=LIAISON.exec(lk);r.links.push({pcode:pc,str:m[1],ctrl:m[2]===undefined?null:m[2]});}
+    else if(!last){r.err='Liaison manquante avant « _ »';return r}
+    if(last) r.attrs=rest;
   }
-  r.attrs=tk.slice(k);
+  if(r.links.length){r.str=r.links[0].str;r.ctrl=r.links[0].ctrl;if(r.links[0].pcode!==r.pcode)r.pcode=r.links[0].pcode;}
   return r;
 }
 function formatDesc(p){
-  const parts=[p.pcode];
-  if(p.str!=null&&p.str!=='') parts.push(p.str+(p.ctrl?'.'+p.ctrl:''));
-  return parts.concat(p.attrs||[]).filter(x=>x!=null&&x!=='').join(' ');
+  // la 1re liaison suit p.pcode / p.str / p.ctrl (édition simple) ; les suivantes viennent de p.links
+  const L=[];
+  if(p.str!=null&&p.str!=='') L.push({pcode:p.pcode,str:p.str,ctrl:p.ctrl});
+  for(const l of (p.links||[]).slice(1)) if(l&&l.str!=null&&l.str!=='') L.push(l);
+  const fl=l=>l.str+(l.ctrl?'.'+l.ctrl:'');
+  let s=p.pcode||'';
+  L.forEach((l,k)=>{ if(k===0) s+=' '+fl(l); else s+='_'+(l.pcode&&l.pcode!==L[k-1].pcode?l.pcode+' ':'')+fl(l); });
+  return [s].concat(p.attrs||[]).filter(x=>x!=null&&x!=='').join(' ');
+}
+/* Modifier une liaison précise (par sa clé « pcode|string ») dans une description */
+function patchLinkDesc(desc,key,fn){
+  const p=parseDesc(desc);if(p.err)return desc;
+  const links=p.links.map(l=>Object.assign({},l));
+  const k=links.findIndex(l=>l.pcode+'|'+l.str===key);
+  if(k<0)return desc;
+  const res=fn(links[k]);
+  if(res===null) links.splice(k,1);
+  if(!links.length) return formatDesc({pcode:p.pcode,str:null,ctrl:null,attrs:p.attrs});
+  return formatDesc({pcode:links[0].pcode,str:links[0].str,ctrl:links[0].ctrl,links,attrs:p.attrs});
 }
 
 /* Géométrie */
@@ -427,9 +462,9 @@ function analyze(rows,codes,opt){
       else lines.push(L);
       return;
     }
-    if(L.curve!=null){L.curves.push([L.curve,L.pts.length-1]);add('warn',L.pts[L.curve],'Courbe débutée (.3) sans fin de courbe (.4) : elle se termine au dernier point de la ligne.','curveOpen',{last:L.pts[L.pts.length-1]});L.curve=null;}
-    if(L.pts.length<2){add('err',L.pts[0],`Ligne d'un seul point : le string ${L.str} du code ${L.pcode} débute ici mais ne continue jamais.`,'single',{line:L});}
-    else if(L.closed&&L.pts.length<3){add('err',L.pts[L.pts.length-1],'Fermeture (.2) d\'une ligne de moins de 3 points.','closeShort');}
+    if(L.curve!=null){L.curves.push([L.curve,L.pts.length-1]);add('warn',L.pts[L.curve],'Courbe débutée (.3) sans fin de courbe (.4) : elle se termine au dernier point de la ligne.','curveOpen',{last:L.pts[L.pts.length-1],key:L.key});L.curve=null;}
+    if(L.pts.length<2){add('err',L.pts[0],`Ligne d'un seul point : le string ${L.str} du code ${L.pcode} débute ici mais ne continue jamais.`,'single',{line:L,key:L.key});}
+    else if(L.closed&&L.pts.length<3){add('err',L.pts[L.pts.length-1],'Fermeture (.2) d\'une ligne de moins de 3 points.','closeShort',{key:L.key});}
     if(L.pts.length>=2) lines.push(L);
     prevLine.set(L.key,L);
   };
@@ -440,13 +475,16 @@ function analyze(rows,codes,opt){
     const p=r.p=parseDesc(r.desc);
     if(p.err){add('err',r.i,p.err+'.','fmt');continue}
     if(p.spaces) add('info',r.i,'Espaces superflus dans la description.','spaces');
-    if(!codes.has(p.pcode)) add('err',r.i,`Code ${p.pcode} absent de la liste ArpentNord.`,'unknown');
-    if(p.str==null) continue;
-    const key=p.pcode+'|'+p.str;
-    let c=p.ctrl===null||p.ctrl===''?0:+p.ctrl;
-    if(p.ctrl!==null&&p.ctrl!==''&&!(/^[1-7]$/.test(p.ctrl))){add('err',r.i,`Code de contrôle .${p.ctrl} inconnu (valeurs permises : .1 à .7).`,'badCtrl');c=0;}
+    for(const pc of new Set([p.pcode,...p.links.map(l=>l.pcode)])) if(!codes.has(pc)) add('err',r.i,`Code ${pc} absent de la liste ArpentNord.`,'unknown',{pcode:pc});
+    const seen=new Set();
+    for(const lk of p.links){
+    const key=lk.pcode+'|'+lk.str;
+    if(seen.has(key)){add('err',r.i,`Le string ${lk.str} du code ${lk.pcode} apparaît deux fois sur ce point.`,'dupLink',{key});continue}
+    seen.add(key);
+    let c=lk.ctrl===null||lk.ctrl===''?0:+lk.ctrl;
+    if(lk.ctrl!==null&&lk.ctrl!==''&&!(/^[1-7]$/.test(lk.ctrl))){add('err',r.i,`Code de contrôle .${lk.ctrl} inconnu (valeurs permises : .1 à .7).`,'badCtrl',{key});c=0;}
     let L=open.get(key);
-    const mk=(type)=>{const N={id:lid++,key,pcode:p.pcode,str:p.str,pts:[],curves:[],curve:null,closed:false,type};open.set(key,N);return N};
+    const mk=(type)=>{const N={id:lid++,key,pcode:lk.pcode,str:lk.str,pts:[],curves:[],curve:null,closed:false,type};open.set(key,N);return N};
     if(c===6){
       if(!L||L.type!=='circle'){finalize(L);L=mk('circle');}
       L.pts.push(r.i); if(L.pts.length===3) finalize(L);
@@ -456,13 +494,14 @@ function analyze(rows,codes,opt){
     if(c===1){finalize(L);L=mk('line');L.pts.push(r.i);continue}
     if(c===3){ if(!L){L=mk('line');} L.pts.push(r.i); if(L.curve!=null){L.curves.push([L.curve,L.pts.length-1]);} L.curve=L.pts.length-1; continue}
     if(!L){
-      add('err',r.i,c===2?'Fermeture (.2) sans ligne ouverte pour ce string.':`Continuation du string ${p.str} (code ${p.pcode}) sans début de ligne (.1).`,'orphan',{ctrl:c});
+      add('err',r.i,c===2?`Fermeture (.2) sans ligne ouverte pour le string ${lk.str} (code ${lk.pcode}).`:`Continuation du string ${lk.str} (code ${lk.pcode}) sans début de ligne (.1).`,'orphan',{ctrl:c,key});
       continue;
     }
     L.pts.push(r.i);
-    if(c===4){ if(L.curve==null) add('warn',r.i,'Fin de courbe (.4) sans début de courbe (.3).','endNoCurve'); else {L.curves.push([L.curve,L.pts.length-1]);L.curve=null;} }
-    if(c===5&&L.curve==null) add('warn',r.i,'Point de courbe (.5) hors d\'une courbe : traité comme point de ligne.','midNoCurve');
+    if(c===4){ if(L.curve==null) add('warn',r.i,'Fin de courbe (.4) sans début de courbe (.3).','endNoCurve',{key}); else {L.curves.push([L.curve,L.pts.length-1]);L.curve=null;} }
+    if(c===5&&L.curve==null) add('warn',r.i,'Point de courbe (.5) hors d\'une courbe : traité comme point de ligne.','midNoCurve',{key});
     if(c===2){L.closed=true;finalize(L);}
+    }
   }
   for(const L of [...open.values()]) finalize(L);
 
@@ -634,7 +673,7 @@ function rectFourth(A,B,C){
   const ang=Math.abs(Math.atan2((A.e-B.e)*(C.n-B.n)-(A.n-B.n)*(C.e-B.e),(A.e-B.e)*(C.e-B.e)+(A.n-B.n)*(C.n-B.n)))*180/Math.PI;
   return {e:A.e+C.e-B.e,n:A.n+C.n-B.n,z:A.z+C.z-B.z,ang,ab:Math.hypot(A.e-B.e,A.n-B.n),bc:Math.hypot(C.e-B.e,C.n-B.n)};
 }
-if(typeof module!=='undefined'&&module.exports) module.exports={parseFile,parseDesc,formatDesc,analyze,lineVerts,buildDXF,buildCodes,makeZip,toCp1252,buildModifText,crc32,swapPoints,isModified,makeRow,rectFourth};
+if(typeof module!=='undefined'&&module.exports) module.exports={parseFile,parseDesc,formatDesc,analyze,lineVerts,buildDXF,buildCodes,makeZip,toCp1252,buildModifText,crc32,swapPoints,isModified,makeRow,rectFourth,patchLinkDesc};
 
 /* ===== Interface ===== */
 const CODES=buildCodes(DICT);
@@ -736,6 +775,8 @@ function setDesc(i,d,why){
   r.desc=d;run();
 }
 function patch(i,fn,why){const p=parseDesc(S.rows[i].desc);fn(p);setDesc(i,formatDesc(p),why)}
+function patchLink(i,key,fn,why){setDesc(i,patchLinkDesc(S.rows[i].desc,key,fn),why)}
+function linkOf(i,key){return parseDesc(S.rows[i].desc).links.find(l=>l.pcode+'|'+l.str===key)}
 function undo(){const h=S.hist.pop();if(!h)return;
   if(h.type==='add'){const k=S.rows.indexOf(h.r);if(k>=0)S.rows.splice(k,1);if(h.cPrev!=null)h.C.desc=h.cPrev;reindex();if(S.sel!=null&&!S.rows[S.sel])S.sel=null;S.journal.push({name:h.r.name,before:'',after:'',why:'Point calculé retiré',t:new Date().toLocaleString('fr-CA')});}
   else if(h.type==='swap'){const A=h.A,B=h.B;swapPoints(A,B,h.withDesc);A.swapNote=h.notes[0];B.swapNote=h.notes[1];S.journal.push({name:A.name+' ↔ '+B.name,before:'',after:'',why:'Annulation de l\'inversion',t:new Date().toLocaleString('fr-CA')});}
@@ -771,10 +812,10 @@ function buildRect(a,b,c,name){
   const k=rectCheck(a,b,c);if(k.err){toast(k.err);return false}
   name=(name||'').trim()||nextName();
   if(S.rows.some(r=>r.name===name)){toast(`Le matricule ${name} existe déjà.`);return false}
-  const A=S.rows[k.a],B=S.rows[k.b],C=S.rows[k.c];const pc=parseDesc(C.desc);
-  const cPrev=pc.ctrl==='2'?C.desc:null;
-  if(cPrev!=null){pc.ctrl=null;C.desc=formatDesc(pc);}
-  const D=makeRow(C,name,k.q.e,k.q.n,k.q.z,formatDesc({pcode:pc.pcode,str:pc.str,ctrl:'2',attrs:['CALCUL']}));
+  const A=S.rows[k.a],B=S.rows[k.b],C=S.rows[k.c];const lc=linkOf(k.c,k.L.key)||{ctrl:null};
+  const cPrev=lc.ctrl==='2'?C.desc:null;
+  if(cPrev!=null)C.desc=patchLinkDesc(C.desc,k.L.key,l=>{l.ctrl=null});
+  const D=makeRow(C,name,k.q.e,k.q.n,k.q.z,formatDesc({pcode:k.L.pcode,str:k.L.str,ctrl:'2',attrs:['CALCUL']}));
   S.rows.splice(S.rows.indexOf(C)+1,0,D);reindex();
   S.hist.push({type:'add',r:D,C,cPrev});
   S.journal.push({name,before:'',after:`${D.xyz.join(' ')} ${D.desc}`,why:`Point calculé : rectangle ${A.name}-${B.name}-${C.name} (angle ${k.q.ang.toFixed(1)}°)`,t:new Date().toLocaleString('fr-CA')});
@@ -785,31 +826,31 @@ $('bUndo').onclick=undo;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.swapPick!=null){S.swapPick=null;renderInsp();draw();return}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!/INPUT|SELECT/.test(document.activeElement.tagName)){e.preventDefault();undo()}});
 
 /* correctifs proposés */
-function keyOf(i){const p=parseDesc(S.rows[i].desc);return p.str!=null?p.pcode+'|'+p.str:null}
+function hasKey(i,k){return !!linkOf(i,k)}
 function fixesFor(is){
-  const r=S.rows[is.row],out=[];const k=keyOf(is.row);
+  const r=S.rows[is.row],out=[];const k=is.key;
   if(is.kind==='single'){
     let prev=-1,next=-1;
-    for(let j=is.row-1;j>=0;j--) if(keyOf(j)===k){prev=j;break}
-    for(let j=is.row+1;j<S.rows.length;j++) if(keyOf(j)===k){next=j;break}
-    if(prev>=0) out.push({label:`Rattacher au point ${S.rows[prev].name} (retirer .1)`,fn:()=>patch(is.row,p=>p.ctrl=null,'Ligne d\'un point : rattachée à la ligne précédente')});
-    if(next>=0&&parseDesc(S.rows[next].desc).ctrl==='1') out.push({label:`Continuer vers ${S.rows[next].name} (retirer son .1)`,fn:()=>patch(next,p=>p.ctrl=null,'Ligne d\'un point : prolongée vers le point suivant')});
-    out.push({label:'Point seulement (retirer le string)',fn:()=>patch(is.row,p=>{p.str=null;p.ctrl=null},'String retiré')});
+    for(let j=is.row-1;j>=0;j--) if(hasKey(j,k)){prev=j;break}
+    for(let j=is.row+1;j<S.rows.length;j++) if(hasKey(j,k)){next=j;break}
+    if(prev>=0) out.push({label:`Rattacher au point ${S.rows[prev].name} (retirer .1)`,fn:()=>patchLink(is.row,k,l=>{l.ctrl=null},'Ligne d\'un point : rattachée à la ligne précédente')});
+    if(next>=0&&linkOf(next,k).ctrl==='1') out.push({label:`Continuer vers ${S.rows[next].name} (retirer son .1)`,fn:()=>patchLink(next,k,l=>{l.ctrl=null},'Ligne d\'un point : prolongée vers le point suivant')});
+    out.push({label:parseDesc(r.desc).links.length>1?`Retirer la liaison ${k.replace('|',' ')}`:'Point seulement (retirer le string)',fn:()=>patchLink(is.row,k,()=>null,'Liaison retirée')});
   }
-  if(is.kind==='orphan') out.push({label:is.ctrl===2?'Remplacer par .1':'Débuter la ligne ici (.1)',fn:()=>patch(is.row,p=>p.ctrl='1','Début de ligne ajouté')});
-  if(is.kind==='closeShort') out.push({label:'Retirer la fermeture (.2)',fn:()=>patch(is.row,p=>p.ctrl=null,'Fermeture retirée')});
-  if(is.kind==='badCtrl'||is.kind==='endNoCurve'||is.kind==='midNoCurve') out.push({label:'Retirer le code de contrôle',fn:()=>patch(is.row,p=>p.ctrl=null,'Contrôle invalide retiré')});
-  if(is.kind==='curveOpen') out.push({label:`Fin de courbe (.4) au point ${S.rows[is.last].name}`,fn:()=>patch(is.last,p=>p.ctrl='4','Fin de courbe ajoutée')});
+  if(is.kind==='orphan') out.push({label:is.ctrl===2?'Remplacer par .1':'Débuter la ligne ici (.1)',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl='1'},'Début de ligne ajouté')});
+  if(is.kind==='closeShort') out.push({label:'Retirer la fermeture (.2)',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl=null},'Fermeture retirée')});
+  if(is.kind==='badCtrl'||is.kind==='endNoCurve'||is.kind==='midNoCurve') out.push({label:'Retirer le code de contrôle',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl=null},'Contrôle invalide retiré')});
+  if(is.kind==='curveOpen') out.push({label:`Fin de courbe (.4) au point ${S.rows[is.last].name}`,fn:()=>patchLink(is.last,is.key,l=>{l.ctrl='4'},'Fin de courbe ajoutée')});
   if(is.kind==='cross'&&is.swap){const [a,b]=is.swap;out.push({label:`Inverser ${S.rows[a].name} ↔ ${S.rows[b].name}`,fn:()=>doSwap(a,b,false)});}
   if(is.kind==='rect'){const [a,b,c]=is.rect;out.push({label:`Compléter le rectangle (nouveau point ${nextName()})`,fn:()=>buildRect(a,b,c,'')});}
   if(is.kind==='spaces') out.push({label:'Nettoyer les espaces',fn:()=>setDesc(is.row,r.desc.trim().replace(/\s+/g,' '),'Espaces nettoyés')});
   if(is.kind==='unknown'){
-    const pc=parseDesc(r.desc).pcode;const cands=[];
+    const pc=is.pcode||parseDesc(r.desc).pcode;const cands=[];
     for(const c of CODES.keys()){ if(c.length===pc.length){let d=0;for(let q=0;q<c.length;q++)if(c[q]!==pc[q])d++; if(d===1)cands.push(c);} else if(Math.abs(c.length-pc.length)===1&&(c.includes(pc)||pc.includes(c)))cands.push(c);}
     // codes déjà utilisés dans le levé en premier
     const used=new Set(S.rows.map(x=>parseDesc(x.desc).pcode));
     cands.sort((a,b)=>(used.has(b)-used.has(a)));
-    for(const c of cands.slice(0,3)) out.push({label:`${c} ${CODES.get(c).abr}`,title:CODES.get(c).desc,fn:()=>patch(is.row,p=>p.pcode=c,`Code ${pc} → ${c}`)});
+    for(const c of cands.slice(0,3)) out.push({label:`${c} ${CODES.get(c).abr}`,title:CODES.get(c).desc,fn:()=>patch(is.row,p=>{if(p.pcode===pc)p.pcode=c;p.links.forEach(l=>{if(l.pcode===pc)l.pcode=c})},`Code ${pc} → ${c}`)});
   }
   return out;
 }
@@ -860,6 +901,7 @@ function renderInsp(){
     </div>
     <div class="field"><label for="iDesc">Description complète</label><input id="iDesc" class="mono" value="${esc(r.desc)}"></div>
     <div class="codeinfo">${c?`<span class="swatch" style="background:${colOfCode(p.pcode)}"></span><b>${c.code} ${esc(c.abr)}</b> · ${esc(c.desc)} → <span class="mono">${esc(layerOf(c.code))}</span>`:(p.pcode?`<b style="color:var(--err)">Code ${esc(p.pcode)} inconnu</b>`:'')}${L?` · ligne de ${L.pts.length} pts${L.closed?' fermée':''}`:''}</div>
+    ${p.links.length>1?`<div class="note">Liaisons multiples : ${p.links.map(l=>`<span class="mono">${esc(l.pcode)} ${esc(l.str)}${l.ctrl?'.'+esc(l.ctrl):''}</span>`).join(' · ')} — les champs ci-dessus modifient la 1<sup>re</sup> ; éditez la description complète pour les autres.</div>`:''}
     ${r.desc!==r.orig?`<div class="note">Original : <del class="mono">${esc(r.orig)}</del></div>`:''}
     <div class="actions"><button class="btn sm primary" id="iApply" type="button">Appliquer</button>${r.desc!==r.orig?'<button class="btn sm" id="iRevert" type="button">Rétablir la description</button>':''}</div>
     <div class="swapbox">
@@ -902,7 +944,7 @@ function renderPts(){
 $('ptBody').onclick=e=>{const tr=e.target.closest('tr[data-i]');if(tr)select(+tr.dataset.i,true)};
 $('ptSearch').oninput=renderPts;$('ptMod').onchange=renderPts;
 function renderCodes(){
-  const cnt=new Map();for(const r of S.rows){const p=parseDesc(r.desc);if(p.pcode)cnt.set(p.pcode,(cnt.get(p.pcode)||0)+1)}
+  const cnt=new Map();for(const r of S.rows){const p=parseDesc(r.desc);for(const pc of new Set([p.pcode,...p.links.map(l=>l.pcode)]))if(pc)cnt.set(pc,(cnt.get(pc)||0)+1)}
   const ks=[...cnt.keys()].sort((a,b)=>a-b);
   $('codeBody').innerHTML=ks.map(k=>{const c=CODES.get(k);const lay=layerOf(k);
     return `<tr><td class="mono"><span class="swatch" style="background:${colOfCode(k)}"></span>${k}${c?' '+esc(c.abr):''}</td><td>${c?esc(c.desc):'<b style="color:var(--err)">inconnu</b>'}<br><span class="src">${c?(layerOv[k]?'modifié':c.src):''}</span></td><td><input class="lay" list="layerList" data-k="${k}" value="${esc(lay)}" aria-label="Couche du code ${k}" ${c?'':'disabled'}></td><td class="mono">${cnt.get(k)}</td></tr>`}).join('')||'<tr><td colspan="4" class="empty">Aucun code.</td></tr>';
