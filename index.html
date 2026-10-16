@@ -181,6 +181,7 @@ label.btn{user-select:none}
       </div>
       <div class="hud tr">
         <button class="chipbtn" id="tSwap" type="button" aria-pressed="false">Inverser 2 pts</button>
+        <button class="chipbtn" id="tRev" type="button" aria-pressed="false">Inverser ligne</button>
         <button class="chipbtn" id="tRect" type="button" aria-pressed="false">Rectangle 3 pts</button>
         <button class="chipbtn" id="tFit" type="button">Étendue</button>
       </div>
@@ -390,7 +391,7 @@ function formatDesc(p){
   for(const l of (p.links||[]).slice(1)) if(l&&l.str!=null&&l.str!=='') L.push(l);
   const fl=l=>l.str+(l.ctrl?'.'+l.ctrl:'');
   let s=p.pcode||'';
-  L.forEach((l,k)=>{ if(k===0) s+=' '+fl(l); else s+='_'+(l.pcode&&l.pcode!==L[k-1].pcode?l.pcode+' ':'')+fl(l); });
+  L.forEach((l,k)=>{ if(k===0) s+=' '+fl(l); else s+='_'+(l.pcode||L[k-1].pcode)+' '+fl(l); /* Pcode toujours répété : « 176 3.1_176 1.1 » */ });
   return [s].concat(p.attrs||[]).filter(x=>x!=null&&x!=='').join(' ');
 }
 /* Modifier une liaison précise (par sa clé « pcode|string ») dans une description */
@@ -511,6 +512,16 @@ function analyze(rows,codes,opt){
     }
   }
   for(const L of [...open.values()]) finalize(L);
+  /* Continuation d'un string qui ne débute que plus loin dans le fichier :
+     le point a été levé avant la ligne ; on propose de le rejoindre en fin de ligne (point copié) */
+  for(const is of issues){
+    if(is.kind!=='orphan'||is.ctrl===2) continue;
+    const later=lines.filter(L=>L.key===is.key&&L.type==='line'&&L.pts[0]>is.row).sort((a,b)=>a.pts[0]-b.pts[0])[0];
+    if(!later) continue;
+    is.joinLine=later;
+    const [pc,st]=is.key.split('|');
+    is.msg=`Le string ${st} du code ${pc} ne débute qu'au point ${rows[later.pts[0]].name}, levé après celui-ci : la liaison ne peut pas se faire dans l'ordre du levé.`+(later.closed?' (la ligne est fermée par .2)':'');
+  }
 
   /* contrôles géométriques */
   const P=i=>[rows[i].e,rows[i].n,rows[i].z];
@@ -786,7 +797,8 @@ function patch(i,fn,why){const p=parseDesc(S.rows[i].desc);fn(p);setDesc(i,forma
 function patchLink(i,key,fn,why){setDesc(i,patchLinkDesc(S.rows[i].desc,key,fn),why)}
 function linkOf(i,key){return parseDesc(S.rows[i].desc).links.find(l=>l.pcode+'|'+l.str===key)}
 function undo(){const h=S.hist.pop();if(!h)return;
-  if(h.type==='add'){const k=S.rows.indexOf(h.r);if(k>=0)S.rows.splice(k,1);if(h.cPrev!=null)h.C.desc=h.cPrev;reindex();if(S.sel!=null&&!S.rows[S.sel])S.sel=null;S.journal.push({name:h.r.name,before:'',after:'',why:'Point calculé retiré',t:new Date().toLocaleString('fr-CA')});}
+  if(h.type==='snap'){for(const s of h.items)Object.assign(s.r,s.st);S.journal.push({name:h.label,before:'',after:'',why:'Annulation',t:new Date().toLocaleString('fr-CA')});}
+  else if(h.type==='add'){const k=S.rows.indexOf(h.r);if(k>=0)S.rows.splice(k,1);if(h.cPrev!=null)h.C.desc=h.cPrev;reindex();if(S.sel!=null&&!S.rows[S.sel])S.sel=null;S.journal.push({name:h.r.name,before:'',after:'',why:'Point calculé retiré',t:new Date().toLocaleString('fr-CA')});}
   else if(h.type==='swap'){const A=h.A,B=h.B;swapPoints(A,B,h.withDesc);A.swapNote=h.notes[0];B.swapNote=h.notes[1];S.journal.push({name:A.name+' ↔ '+B.name,before:'',after:'',why:'Annulation de l\'inversion',t:new Date().toLocaleString('fr-CA')});}
   else{h.r.desc=h.before;S.journal.push({name:h.r.name,before:'',after:h.before,why:'Annulation',t:new Date().toLocaleString('fr-CA')});}
   run();toast('Modification annulée.')}
@@ -818,6 +830,51 @@ function rectCheck(a,b,c){
   [a,b,c]=s;
   return {a,b,c,L,q:rectFourth(S.rows[a],S.rows[b],S.rows[c])};
 }
+/* Joindre un string à un point levé plus tôt : copie du point (mêmes coordonnées) insérée après le dernier point du string */
+function joinLater(is){
+  const L=is.joinLine,src=S.rows[is.row],last=S.rows[L.pts[L.pts.length-1]];
+  const name=nextName();const cPrev=src.desc;
+  src.desc=patchLinkDesc(src.desc,is.key,()=>null);
+  const D=makeRow(last,name,src.e,src.n,src.z,formatDesc({pcode:L.pcode,str:L.str,ctrl:null,attrs:['CALCUL']}));
+  D.xyz=src.xyz.slice();D.oxyz=src.xyz.slice();D.e=src.e;D.n=src.n;D.z=src.z;
+  S.rows.splice(S.rows.indexOf(last)+1,0,D);reindex();
+  S.hist.push({type:'add',r:D,C:src,cPrev});
+  S.journal.push({name,before:'',after:`${D.xyz.join(' ')} ${D.desc}`,why:`Copie de ${src.name} pour joindre le string ${L.str} (code ${L.pcode}) après ${last.name}`,t:new Date().toLocaleString('fr-CA')});
+  run();select(D.i,false);toast(`Point ${name} ajouté (copie de ${src.name}) : le string ${L.str} rejoint ${src.name}.`);
+}
+/* ---------- Inverser l'ordre d'une ligne ----------
+   Les coordonnées sont redistribuées à l'envers sur les mêmes matricules : le dernier point prend
+   le numéro du premier, etc. Les descriptions restent à leur rang. Option : débuter la ligne à un
+   point levé plus tôt (continuation orpheline) → ce point reçoit .1 et l'ancien début perd son .1. */
+const snapState=r=>({e:r.e,n:r.n,z:r.z,xyz:r.xyz.slice(),bad:r.bad,desc:r.desc,swapNote:r.swapNote});
+function revCheck(L){
+  if(!L||L.type!=='line') return {err:'Choisissez un point d\'une ligne.'};
+  if(L.pts.length<2) return {err:'La ligne doit compter au moins 2 points.'};
+  const shared=L.pts.filter(i=>S.lines.some(o=>o!==L&&o.pts.includes(i)));
+  if(shared.length) return {err:`Impossible : ${shared.map(i=>S.rows[i].name).join(', ')} appartien${shared.length>1?'nent':'t'} aussi à une autre ligne, qui serait déplacée.`};
+  return {};
+}
+function orphanFor(L){return S.issues.find(is=>is.kind==='orphan'&&is.joinLine===L)}
+function reverseLine(L,startRow){
+  const chk=revCheck(L);if(chk.err){toast(chk.err);return false}
+  const rows=L.pts.map(i=>S.rows[i]);
+  const touched=new Set(rows);if(startRow!=null)touched.add(S.rows[startRow]);
+  const items=[...touched].map(r=>({r,st:snapState(r)}));
+  const coords=rows.map(r=>({e:r.e,n:r.n,z:r.z,xyz:r.xyz.slice(),bad:r.bad,name:r.name})).reverse();
+  rows.forEach((r,k)=>{const c=coords[k];r.e=c.e;r.n=c.n;r.z=c.z;r.xyz=c.xyz;r.bad=c.bad;r.swapNote=r.xyz.join()===r.oxyz.join()?'':`↔ coord. de ${c.name}`;});
+  let extra='';
+  if(startRow!=null){
+    const O=S.rows[startRow];
+    O.desc=patchLinkDesc(O.desc,L.key,l=>{l.ctrl='1'});
+    const F0=rows[0];F0.desc=patchLinkDesc(F0.desc,L.key,l=>{if(l.ctrl==='1')l.ctrl=null});
+    extra=` ; ${O.name} débute la ligne`;
+  }
+  const label=`${L.pcode} / string ${L.str}`;
+  S.hist.push({type:'snap',items,label});
+  S.journal.push({name:`${rows[0].name}…${rows[rows.length-1].name}`,before:'',after:'',why:`Ligne ${label} inversée (${rows.length} points)${extra}`,t:new Date().toLocaleString('fr-CA')});
+  S.tool=null;toolRender();run();
+  toast(`Ligne ${label} inversée${extra}.`);return true;
+}
 function buildRect(a,b,c,name){
   const k=rectCheck(a,b,c);if(k.err){toast(k.err);return false}
   name=(name||'').trim()||nextName();
@@ -847,6 +904,8 @@ function fixesFor(is){
     if(next>=0&&linkOf(next,k).ctrl==='1') out.push({label:`Continuer vers ${S.rows[next].name} (retirer son .1)`,fn:()=>patchLink(next,k,l=>{l.ctrl=null},'Ligne d\'un point : prolongée vers le point suivant')});
     out.push({label:parseDesc(r.desc).links.length>1?`Retirer la liaison ${k.replace('|',' ')}`:'Point seulement (retirer le string)',fn:()=>patchLink(is.row,k,()=>null,'Liaison retirée')});
   }
+  if(is.kind==='orphan'&&is.joinLine){const L=is.joinLine;const chk=revCheck(L);
+    if(!chk.err)out.push({label:`Inverser le string ${L.str} (${S.rows[L.pts[0]].name.slice(-4)}…${S.rows[L.pts[L.pts.length-1]].name.slice(-4)}) et le débuter ici`,title:'Les points du string sont renumérotés à l\'envers (le dernier prend le numéro du premier, etc.) et ce point devient le début de ligne (.1)',fn:()=>reverseLine(L,is.row)});}
   if(is.kind==='orphan') out.push({label:is.ctrl===2?'Remplacer par .1':'Débuter la ligne ici (.1)',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl='1'},'Début de ligne ajouté')});
   if(is.kind==='closeShort') out.push({label:'Retirer la fermeture (.2)',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl=null},'Fermeture retirée')});
   if(is.kind==='badCtrl'||is.kind==='endNoCurve'||is.kind==='midNoCurve') out.push({label:'Retirer le code de contrôle',fn:()=>patchLink(is.row,is.key,l=>{l.ctrl=null},'Contrôle invalide retiré')});
@@ -1003,7 +1062,7 @@ function toolStart(kind){
   S.rectPrev=null;toolRender();draw();
 }
 function toolRender(){
-  $('tSwap').setAttribute('aria-pressed',S.tool?.kind==='swap');$('tRect').setAttribute('aria-pressed',S.tool?.kind==='rect');
+  $('tSwap').setAttribute('aria-pressed',S.tool?.kind==='swap');$('tRev').setAttribute('aria-pressed',S.tool?.kind==='rev');$('tRect').setAttribute('aria-pressed',S.tool?.kind==='rect');
   const bar=$('toolbar');if(!S.tool){bar.hidden=true;S.rectPrev=null;return}
   const t=S.tool,n=t.picks.map(i=>S.rows[i].name);bar.hidden=false;
   let msg,ok=false,extra='';
@@ -1011,6 +1070,20 @@ function toolRender(){
     msg=n.length===0?'Inverser 2 points : touchez le 1<sup>er</sup> point.':n.length===1?`1<sup>er</sup> point <b class="mono">${esc(n[0])}</b> · touchez le 2<sup>e</sup> point.`:`Inverser <b class="mono">${esc(n[0])}</b> ↔ <b class="mono">${esc(n[1])}</b> : chaque point prend le numéro de l'autre.`;
     ok=n.length===2;
     extra=`<label class="note"><input type="checkbox" id="tbDesc" ${t.withDesc?'checked':''}> descriptions suivent les points</label>`;
+  } else if(t.kind==='rev'){
+    const cands=t.picks.length?S.lines.filter(l=>l.type==='line'&&l.pts.includes(t.picks[0])):[];
+    if(!t.picks.length) msg='Inverser une ligne : touchez un point de la ligne à inverser.';
+    else if(!cands.length) msg=`<span style="color:var(--err)">${esc(n[0])} ne fait partie d'aucune ligne.</span>`;
+    else{
+      if(!t.line||!cands.includes(t.line))t.line=cands[0];
+      const L=t.line,chk=revCheck(L),o=orphanFor(L);
+      if(cands.length>1)extra=`<div class="actions">${cands.map((c,k)=>`<button class="btn sm${c===L?' primary':''}" type="button" data-cand="${k}">${esc(c.pcode)} / ${esc(c.str)}</button>`).join('')}</div>`;
+      if(chk.err)msg=`<span style="color:var(--err)">${esc(chk.err)}</span>`;
+      else{ok=true;const a=S.rows[L.pts[0]].name,b=S.rows[L.pts[L.pts.length-1]].name;
+        msg=`Ligne <b>${esc(L.pcode)} / string ${esc(L.str)}</b> : ${L.pts.length} points. Après inversion, <b class="mono">${esc(a)}</b> prend la position de <b class="mono">${esc(b)}</b>, et ainsi de suite.`;
+        if(o)extra+=`<label class="note"><input type="checkbox" id="tbStart" ${t.start!==false?'checked':''}> débuter la ligne au point <b class="mono">${esc(S.rows[o.row].name)}</b> (levé avant, liaison en attente)</label>`;}
+      t.orphan=o;
+    }
   } else {
     msg=n.length<3?`Rectangle : touchez 3 points consécutifs d'une ligne (${n.length}/3)${n.length?' · '+n.map(x=>`<b class="mono">${esc(x)}</b>`).join(', '):''}.`:'';
     if(n.length===3){const k=rectCheck(...t.picks);
@@ -1018,11 +1091,14 @@ function toolRender(){
       else{ok=true;S.rectPrev={a:k.a,c:k.c,q:k.q};msg=`Coin <b class="mono">${esc(S.rows[k.b].name)}</b> · angle ${k.q.ang.toFixed(2)}°${Math.abs(k.q.ang-90)>3?' <span class="pill warn">pas d\'équerre</span>':''} · nouveau point <b class="mono">${esc(nextName())}</b> (${esc(k.L.pcode)} ${esc(k.L.str)}.2 CALCUL)`;}
     }
   }
-  bar.innerHTML=`<div class="tbmsg">${msg}</div>${extra}<div class="actions"><button class="btn sm primary" id="tbGo" type="button" ${ok?'':'disabled'}>${t.kind==='swap'?'Inverser':'Construire le 4e point'}</button><button class="btn sm" id="tbReset" type="button">Recommencer</button><button class="btn sm" id="tbClose" type="button">Fermer</button></div>`;
+  bar.innerHTML=`<div class="tbmsg">${msg}</div>${extra}<div class="actions"><button class="btn sm primary" id="tbGo" type="button" ${ok?'':'disabled'}>${t.kind==='swap'?'Inverser':t.kind==='rev'?'Inverser la ligne':'Construire le 4e point'}</button><button class="btn sm" id="tbReset" type="button">Recommencer</button><button class="btn sm" id="tbClose" type="button">Fermer</button></div>`;
   if($('tbDesc'))$('tbDesc').onchange=e=>{t.withDesc=e.target.checked};
+  if($('tbStart'))$('tbStart').onchange=e=>{t.start=e.target.checked};
+  bar.querySelectorAll('[data-cand]').forEach(btn=>btn.onclick=()=>{const cands=S.lines.filter(l=>l.type==='line'&&l.pts.includes(t.picks[0]));t.line=cands[+btn.dataset.cand];toolRender();draw()});
   $('tbReset').onclick=()=>{t.picks=[];S.rectPrev=null;toolRender();draw()};
   $('tbClose').onclick=()=>{S.tool=null;toolRender();draw()};
   $('tbGo').onclick=()=>{
+    if(t.kind==='rev'){reverseLine(t.line,t.orphan&&t.start!==false?t.orphan.row:null);return}
     if(t.kind==='swap'){const [a,b]=t.picks;doSwap(a,b,!!t.withDesc);S.tool={kind:'swap',picks:[],withDesc:t.withDesc};select(a,false);}
     else{const [a,b,c]=t.picks;if(buildRect(a,b,c,'')){S.tool={kind:'rect',picks:[]};}}
     toolRender();draw();
@@ -1031,10 +1107,10 @@ function toolRender(){
 function toolPick(i){
   const t=S.tool,k=t.picks.indexOf(i);
   if(k>=0)t.picks.splice(k,1);
-  else{const max=t.kind==='swap'?2:3;if(t.picks.length>=max)t.picks=[];t.picks.push(i);}
+  else{const max=t.kind==='swap'?2:t.kind==='rev'?1:3;if(t.kind==='rev')t.line=null;if(t.picks.length>=max)t.picks=[];t.picks.push(i);}
   toolRender();draw();
 }
-$('tSwap').onclick=()=>toolStart('swap');$('tRect').onclick=()=>toolStart('rect');
+$('tSwap').onclick=()=>toolStart('swap');$('tRev').onclick=()=>toolStart('rev');$('tRect').onclick=()=>toolStart('rect');
 const W2S=(x,y)=>[(x-S.view.cx)*S.view.k+S.W/2,S.H/2-(y-S.view.cy)*S.view.k];
 const S2W=(sx,sy)=>[(sx-S.W/2)/S.view.k+S.view.cx,(S.H/2-sy)/S.view.k+S.view.cy];
 function niceStep(px){const m=px/S.view.k;const p=Math.pow(10,Math.floor(Math.log10(m)));return [1,2,5,10].map(f=>f*p).find(v=>v>=m)}
@@ -1048,7 +1124,7 @@ function draw(){
   for(let x=Math.floor(wx0/st)*st;x<=wx1;x+=st){const s=W2S(x,0)[0];ctx.moveTo(s,0);ctx.lineTo(s,S.H)}
   for(let y=Math.floor(wy0/st)*st;y<=wy1;y+=st){const s=W2S(0,y)[1];ctx.moveTo(0,s);ctx.lineTo(S.W,s)}
   ctx.stroke();
-  const selL=S.sel!=null?S.lineOf.get(S.sel):null;
+  const selL=S.tool?.kind==='rev'&&S.tool.line?S.tool.line:(S.sel!=null?S.lineOf.get(S.sel):null);
   S.lines.forEach((L,k)=>{const v=S.verts[k];ctx.strokeStyle=colOfCode(L.pcode);ctx.lineWidth=L===selL?3:1.4;ctx.beginPath();v.forEach((p,j)=>{const [x,y]=W2S(p[0],p[1]);j?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();});
   // points
   const showInfo=$('fInfo').checked;
@@ -1068,6 +1144,8 @@ function draw(){
   if(S.rectPrev&&(S.sel!=null||S.tool)){const {a,c,q}=S.rectPrev;const P1=W2S(S.rows[c].e,S.rows[c].n),P2=W2S(q.e,q.n),P3=W2S(S.rows[a].e,S.rows[a].n);
     ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle='#3cc4b8';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(...P1);ctx.lineTo(...P2);ctx.lineTo(...P3);ctx.stroke();ctx.restore();
     ctx.strokeStyle='#3cc4b8';ctx.strokeRect(P2[0]-4,P2[1]-4,8,8);}
+  if(S.tool?.kind==='rev'&&S.tool.line){const L=S.tool.line;const a=S.rows[L.pts[0]],b=S.rows[L.pts[L.pts.length-1]];
+    const [x1,y1]=W2S(a.e,a.n),[x2,y2]=W2S(b.e,b.n);ctx.font='700 11px Barlow, sans-serif';ctx.fillStyle='#ffc440';ctx.fillText('DÉBUT',x1-14,y1+22);ctx.fillText('FIN',x2-8,y2+22);}
   if(S.tool&&S.tool.picks.length){ctx.font='700 12px Barlow, sans-serif';S.tool.picks.forEach((pi,n)=>{const r=S.rows[pi];const [x,y]=W2S(r.e,r.n);ctx.fillStyle='#ffc440';ctx.beginPath();ctx.arc(x,y,11,0,7);ctx.fill();ctx.fillStyle='#14191d';ctx.textAlign='center';ctx.fillText(String(n+1),x,y+4);ctx.textAlign='left';});
     if(S.tool.kind==='swap'&&S.tool.picks.length===2){const [p1,p2]=S.tool.picks.map(pi=>W2S(S.rows[pi].e,S.rows[pi].n));ctx.save();ctx.setLineDash([4,4]);ctx.strokeStyle='#ffc440';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();ctx.restore();}}
   if(S.swapPick!=null){ctx.fillStyle='#3cc4b8';ctx.font='600 13px Barlow, sans-serif';ctx.fillText('Inversion : cliquez le point à échanger avec '+S.rows[S.swapPick].name+' (Échap pour annuler)',12,S.H-40);}
