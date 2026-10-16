@@ -140,8 +140,12 @@ label.btn{user-select:none}
 .files legend{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:0 4px}
 .files label{display:flex;gap:8px;align-items:baseline;font-size:.88rem;flex-wrap:wrap}
 .sheetbox textarea#mBody{font:14px/1.4 var(--f-body);background:var(--panel)}
+.toolbar{position:absolute;left:10px;right:10px;top:46px;margin:0 auto;max-width:560px;background:var(--panel);color:var(--ink);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 18px rgba(0,0,0,.35);z-index:3}
+.tbmsg{font-size:.9rem}
+.toolbar{pointer-events:none;opacity:.94}.toolbar button,.toolbar input,.toolbar label{pointer-events:auto}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:7px;font-size:.88rem;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:calc(100% - 32px);z-index:9}
 .confirm{display:flex;flex-direction:column;gap:8px;border:1px solid var(--warn);background:var(--warn-soft);padding:10px;border-radius:6px;font-size:.88rem}
+@media (max-width:640px){.hud.tr{top:44px;left:10px;justify-content:flex-start}.toolbar{top:auto;bottom:44px}}
 @media (max-width:900px){
   html,body{height:auto}
   .app{height:auto;display:block}
@@ -176,9 +180,12 @@ label.btn{user-select:none}
         <button class="chipbtn" id="tElev" aria-pressed="false" type="button">Élév.</button>
       </div>
       <div class="hud tr">
+        <button class="chipbtn" id="tSwap" type="button" aria-pressed="false">Inverser 2 pts</button>
+        <button class="chipbtn" id="tRect" type="button" aria-pressed="false">Rectangle 3 pts</button>
         <button class="chipbtn" id="tFit" type="button">Étendue</button>
       </div>
       <div class="hud bl"><span class="readout" id="readout">E — · N —</span></div>
+      <div class="toolbar" id="toolbar" hidden></div>
       <div class="drop" id="drop" hidden>Déposer le fichier de levé (.txt)</div>
     </section>
     <aside class="side">
@@ -702,6 +709,7 @@ function load(text,name){
   const F=parseFile(text);
   const ok=F.rows.filter(r=>!r.bad).length;
   if(!ok){toast(`${name} ne ressemble pas à un levé : attendu Matricule,Est,Nord,Élév,Description.`);return false}
+  S.tool=null;if($('toolbar'))toolRender();
   S.F=F;S.rows=F.rows;S.fileName=name;S.enc=S.nextEnc||'windows-1252';S.nextEnc=null;S.hist=[];S.sel=null;S.cur=-1;S.journal=[];
   $('fname').textContent=name+' · '+F.rows.length+' points';
   $('nameList').innerHTML=F.rows.map(r=>`<option value="${esc(r.name)}">`).join('');
@@ -798,14 +806,16 @@ function reindex(){S.rows.forEach((r,k)=>r.i=k)}
 function nextName(){let m=-1,w=0;for(const r of S.rows)if(/^\d+$/.test(r.name)){const v=+r.name;if(v>m){m=v;w=r.name.length}}return m>=0?String(m+1).padStart(w,'0'):''}
 /* Rectangle par 3 points : A–B–C consécutifs sur la même ligne, B = coin ; D = A + C − B inséré après C avec .2 */
 function rectCheck(a,b,c){
-  if([a,b,c].some(x=>x==null||x<0)) return {err:'Indiquez les trois matricules.'};
-  const L=S.lineOf.get(b);
-  if(!L||L.type!=='line'||S.lineOf.get(a)!==L||S.lineOf.get(c)!==L) return {err:'Les 3 points doivent faire partie de la même ligne (même code et string).'};
-  let ia=L.pts.indexOf(a),ib=L.pts.indexOf(b),ic=L.pts.indexOf(c);
-  if(ia>ic){[a,c]=[c,a];[ia,ic]=[ic,ia]}
-  if(ib!==ia+1||ic!==ib+1) return {err:'Les points doivent se suivre sur la ligne, avec le coin au milieu.'};
-  if(ic!==L.pts.length-1) return {err:`La ligne continue après ${S.rows[c].name} : le rectangle ne peut être fermé qu'au dernier point.`};
-  if(L.pts.length!==3) return {err:'La ligne doit compter exactement 3 points.'};
+  if([a,b,c].some(x=>x==null||x<0)) return {err:'Indiquez les trois points.'};
+  if(new Set([a,b,c]).size<3) return {err:'Choisissez trois points différents.'};
+  // ordre libre : on cherche la ligne qui contient les 3 points, le coin est celui du milieu
+  const L=S.lines.find(l=>l.type==='line'&&[a,b,c].every(x=>l.pts.includes(x)));
+  if(!L) return {err:'Les 3 points doivent faire partie de la même ligne (même code et string).'};
+  const s=[a,b,c].sort((x,y)=>L.pts.indexOf(x)-L.pts.indexOf(y));
+  const [ia,ib,ic]=s.map(x=>L.pts.indexOf(x));
+  if(ib!==ia+1||ic!==ib+1) return {err:'Les 3 points doivent se suivre sur la ligne.'};
+  if(L.pts.length!==3) return {err:`La ligne ${L.pcode} / string ${L.str} compte ${L.pts.length} points : il en faut exactement 3.`};
+  [a,b,c]=s;
   return {a,b,c,L,q:rectFourth(S.rows[a],S.rows[b],S.rows[c])};
 }
 function buildRect(a,b,c,name){
@@ -823,7 +833,7 @@ function buildRect(a,b,c,name){
   toast(`Point ${name} ajouté : rectangle fermé.`);return true;
 }
 $('bUndo').onclick=undo;
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.swapPick!=null){S.swapPick=null;renderInsp();draw();return}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!/INPUT|SELECT/.test(document.activeElement.tagName)){e.preventDefault();undo()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.tool){S.tool=null;toolRender();draw();return}if(e.key==='Escape'&&S.swapPick!=null){S.swapPick=null;renderInsp();draw();return}if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!/INPUT|SELECT/.test(document.activeElement.tagName)){e.preventDefault();undo()}});
 
 /* correctifs proposés */
 function hasKey(i,k){return !!linkOf(i,k)}
@@ -930,8 +940,8 @@ function renderInsp(){
   if(S.swapPick===i)$('iSwapDesc').checked=!!S.swapDesc;
   const idx=v=>{v=v.trim();if(!v)return -1;let j=S.rows.findIndex(x=>x.name===v);if(j<0)j=S.rows.findIndex(x=>x.name.endsWith(v));return j};
   const rupd=()=>{const k=rectCheck(idx($('iRA').value),idx($('iRB').value),idx($('iRC').value));
-    if(k.err){$('iRInfo').textContent=($('iRA').value||$('iRB').value||$('iRC').value)?k.err:'Sélectionnez un point d\'une ligne de 3 points, ou saisissez les matricules.';S.rectPrev=null;$('iRGo').disabled=true;}
-    else{const q=k.q;$('iRInfo').innerHTML=`Angle au coin <b>${q.ang.toFixed(2)}°</b>${Math.abs(q.ang-90)>3?' <span class="pill warn">pas d\'équerre</span>':''} · côtés ${q.ab.toFixed(3)} m × ${q.bc.toFixed(3)} m<br>Nouveau point : <span class="mono">E ${q.e.toFixed(3)} · N ${q.n.toFixed(3)} · Z ${q.z.toFixed(3)}</span>`;S.rectPrev={a:k.a,c:k.c,q};$('iRGo').disabled=false;}
+    if(k.err){$('iRInfo').textContent=($('iRA').value||$('iRB').value||$('iRC').value)?k.err:'Sélectionnez un point d\'une ligne de 3 points, ou saisissez les matricules.';if(!S.tool)S.rectPrev=null;$('iRGo').disabled=true;}
+    else{const q=k.q;$('iRInfo').innerHTML=`Angle au coin <b>${q.ang.toFixed(2)}°</b>${Math.abs(q.ang-90)>3?' <span class="pill warn">pas d\'équerre</span>':''} · côtés ${q.ab.toFixed(3)} m × ${q.bc.toFixed(3)} m<br>Nouveau point : <span class="mono">E ${q.e.toFixed(3)} · N ${q.n.toFixed(3)} · Z ${q.z.toFixed(3)}</span>`;if(!S.tool)S.rectPrev={a:k.a,c:k.c,q};$('iRGo').disabled=false;}
     draw()};
   ['iRA','iRB','iRC'].forEach(id=>$(id).oninput=rupd);rupd();
   $('iRGo').onclick=()=>buildRect(idx($('iRA').value),idx($('iRB').value),idx($('iRC').value),$('iRN').value);
@@ -984,6 +994,47 @@ new ResizeObserver(size).observe(pw);
 function fitBox(x0,y0,x1,y1,pad){const w=Math.max(x1-x0,pad),h=Math.max(y1-y0,pad);S.view={cx:(x0+x1)/2,cy:(y0+y1)/2,k:Math.min(S.W/w,S.H/h)*0.82}}
 function fit(){const R=S.rows.filter(r=>!r.bad);if(!R.length)return;let x0=1e99,y0=1e99,x1=-1e99,y1=-1e99;for(const r of R){x0=Math.min(x0,r.e);x1=Math.max(x1,r.e);y0=Math.min(y0,r.n);y1=Math.max(y1,r.n)}fitBox(x0,y0,x1,y1,5);draw()}
 $('tFit').onclick=fit;
+/* ---------- Outils sur le plan : inverser 2 points, rectangle par 3 points ---------- */
+S.tool=null;
+function toolStart(kind){
+  if(!S.rows.length){toast('Ouvrez d\'abord un levé.');return}
+  S.swapPick=null;
+  S.tool=S.tool&&S.tool.kind===kind?null:{kind,picks:[]};
+  S.rectPrev=null;toolRender();draw();
+}
+function toolRender(){
+  $('tSwap').setAttribute('aria-pressed',S.tool?.kind==='swap');$('tRect').setAttribute('aria-pressed',S.tool?.kind==='rect');
+  const bar=$('toolbar');if(!S.tool){bar.hidden=true;S.rectPrev=null;return}
+  const t=S.tool,n=t.picks.map(i=>S.rows[i].name);bar.hidden=false;
+  let msg,ok=false,extra='';
+  if(t.kind==='swap'){
+    msg=n.length===0?'Inverser 2 points : touchez le 1<sup>er</sup> point.':n.length===1?`1<sup>er</sup> point <b class="mono">${esc(n[0])}</b> · touchez le 2<sup>e</sup> point.`:`Inverser <b class="mono">${esc(n[0])}</b> ↔ <b class="mono">${esc(n[1])}</b> : chaque point prend le numéro de l'autre.`;
+    ok=n.length===2;
+    extra=`<label class="note"><input type="checkbox" id="tbDesc" ${t.withDesc?'checked':''}> descriptions suivent les points</label>`;
+  } else {
+    msg=n.length<3?`Rectangle : touchez 3 points consécutifs d'une ligne (${n.length}/3)${n.length?' · '+n.map(x=>`<b class="mono">${esc(x)}</b>`).join(', '):''}.`:'';
+    if(n.length===3){const k=rectCheck(...t.picks);
+      if(k.err){msg=`<span style="color:var(--err)">${esc(k.err)}</span>`;S.rectPrev=null;}
+      else{ok=true;S.rectPrev={a:k.a,c:k.c,q:k.q};msg=`Coin <b class="mono">${esc(S.rows[k.b].name)}</b> · angle ${k.q.ang.toFixed(2)}°${Math.abs(k.q.ang-90)>3?' <span class="pill warn">pas d\'équerre</span>':''} · nouveau point <b class="mono">${esc(nextName())}</b> (${esc(k.L.pcode)} ${esc(k.L.str)}.2 CALCUL)`;}
+    }
+  }
+  bar.innerHTML=`<div class="tbmsg">${msg}</div>${extra}<div class="actions"><button class="btn sm primary" id="tbGo" type="button" ${ok?'':'disabled'}>${t.kind==='swap'?'Inverser':'Construire le 4e point'}</button><button class="btn sm" id="tbReset" type="button">Recommencer</button><button class="btn sm" id="tbClose" type="button">Fermer</button></div>`;
+  if($('tbDesc'))$('tbDesc').onchange=e=>{t.withDesc=e.target.checked};
+  $('tbReset').onclick=()=>{t.picks=[];S.rectPrev=null;toolRender();draw()};
+  $('tbClose').onclick=()=>{S.tool=null;toolRender();draw()};
+  $('tbGo').onclick=()=>{
+    if(t.kind==='swap'){const [a,b]=t.picks;doSwap(a,b,!!t.withDesc);S.tool={kind:'swap',picks:[],withDesc:t.withDesc};select(a,false);}
+    else{const [a,b,c]=t.picks;if(buildRect(a,b,c,'')){S.tool={kind:'rect',picks:[]};}}
+    toolRender();draw();
+  };
+}
+function toolPick(i){
+  const t=S.tool,k=t.picks.indexOf(i);
+  if(k>=0)t.picks.splice(k,1);
+  else{const max=t.kind==='swap'?2:3;if(t.picks.length>=max)t.picks=[];t.picks.push(i);}
+  toolRender();draw();
+}
+$('tSwap').onclick=()=>toolStart('swap');$('tRect').onclick=()=>toolStart('rect');
 const W2S=(x,y)=>[(x-S.view.cx)*S.view.k+S.W/2,S.H/2-(y-S.view.cy)*S.view.k];
 const S2W=(sx,sy)=>[(sx-S.W/2)/S.view.k+S.view.cx,(S.H/2-sy)/S.view.k+S.view.cy];
 function niceStep(px){const m=px/S.view.k;const p=Math.pow(10,Math.floor(Math.log10(m)));return [1,2,5,10].map(f=>f*p).find(v=>v>=m)}
@@ -1014,9 +1065,11 @@ function draw(){
       if(S.showElev){ctx.fillStyle='#7fa1b0';ctx.fillText(r.z.toFixed(2),x+7,y+dy+13)}
     }
   }
-  if(S.rectPrev&&S.sel!=null){const {a,c,q}=S.rectPrev;const P1=W2S(S.rows[c].e,S.rows[c].n),P2=W2S(q.e,q.n),P3=W2S(S.rows[a].e,S.rows[a].n);
+  if(S.rectPrev&&(S.sel!=null||S.tool)){const {a,c,q}=S.rectPrev;const P1=W2S(S.rows[c].e,S.rows[c].n),P2=W2S(q.e,q.n),P3=W2S(S.rows[a].e,S.rows[a].n);
     ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle='#3cc4b8';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(...P1);ctx.lineTo(...P2);ctx.lineTo(...P3);ctx.stroke();ctx.restore();
     ctx.strokeStyle='#3cc4b8';ctx.strokeRect(P2[0]-4,P2[1]-4,8,8);}
+  if(S.tool&&S.tool.picks.length){ctx.font='700 12px Barlow, sans-serif';S.tool.picks.forEach((pi,n)=>{const r=S.rows[pi];const [x,y]=W2S(r.e,r.n);ctx.fillStyle='#ffc440';ctx.beginPath();ctx.arc(x,y,11,0,7);ctx.fill();ctx.fillStyle='#14191d';ctx.textAlign='center';ctx.fillText(String(n+1),x,y+4);ctx.textAlign='left';});
+    if(S.tool.kind==='swap'&&S.tool.picks.length===2){const [p1,p2]=S.tool.picks.map(pi=>W2S(S.rows[pi].e,S.rows[pi].n));ctx.save();ctx.setLineDash([4,4]);ctx.strokeStyle='#ffc440';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();ctx.restore();}}
   if(S.swapPick!=null){ctx.fillStyle='#3cc4b8';ctx.font='600 13px Barlow, sans-serif';ctx.fillText('Inversion : cliquez le point à échanger avec '+S.rows[S.swapPick].name+' (Échap pour annuler)',12,S.H-40);}
   if(S.sel!=null){const r=S.rows[S.sel];const [x,y]=W2S(r.e,r.n);ctx.strokeStyle='#3cc4b8';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.stroke();}
   // échelle
@@ -1039,6 +1092,7 @@ cv.addEventListener('pointermove',e=>{
   if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;S.view.cx-=dx/S.view.k;S.view.cy+=dy/S.view.k;drag={x:e.offsetX,y:e.offsetY};draw()}});
 cv.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
   if(!moved&&S.view&&ptrs.size===0){let best=-1,bd=14;for(const r of S.rows){if(r.bad)continue;const [x,y]=W2S(r.e,r.n);const d=Math.hypot(x-e.offsetX,y-e.offsetY);if(d<bd){bd=d;best=r.i}}
+    if(best>=0&&S.tool){toolPick(best);return}
     if(best>=0&&S.swapPick!=null&&best!==S.swapPick){const a=S.swapPick;doSwap(a,best,!!S.swapDesc);select(a,false);return}
     if(best>=0){select(best,false);const t=document.querySelector('.tab[data-tab="pAnom"]');if(t.getAttribute('aria-selected')!=='true')t.click()}}
   drag=null});
