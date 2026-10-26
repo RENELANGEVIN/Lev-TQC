@@ -1,6 +1,6 @@
 # Validation de levé ArpentNord
 
-Outil web pour valider un levé Leica (méthode string CS20, liste de codes ArpentNord), corriger les codes,
+Outil web pour valider un levé  (méthode string CS20, liste de codes ArpentNord), corriger les codes,
 inverser des points, compléter des rectangles (point `CALCUL`) et exporter `_modif.txt` et `.dxf` (couches du gabarit NouvLR).
 
 Tout se fait dans le navigateur : aucun fichier de levé n'est envoyé sur Internet.
